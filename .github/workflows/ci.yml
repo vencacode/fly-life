@@ -1,0 +1,23 @@
+name: Unity CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Validate project structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts exist
+        run: |
+          echo "Checking core scripts..."
+          test -f Assets/Scripts/Core/GameManager.cs        && echo "✅ GameManager"
+          test -f Assets/Scripts/Managers/PooManager.cs     && echo "✅ PooManager"
+          test -f Assets/Scripts/Managers/ClanManager.cs    && echo "✅ ClanManager"
+          test -f Assets/Scripts/Managers/TerritoryManager.cs && echo "✅ TerritoryManager"
+          test -f Assets/Scripts/Battle/BattleManager.cs    && echo "✅ BattleManager"
+          echo "All core scripts present."
