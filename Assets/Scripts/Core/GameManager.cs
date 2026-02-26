@@ -9,7 +9,6 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance { get; private set; }
 
     [Header("Managers (auto-assigned if null)")]
-    public FlyManager FlyManager;
     public PooManager PooManager;
     public ClanManager ClanManager;
     public TerritoryManager TerritoryManager;
@@ -34,7 +33,6 @@ public class GameManager : MonoBehaviour
 
     void AutoAssignManagers()
     {
-        FlyManager      ??= GetComponentInChildren<FlyManager>();
         PooManager      ??= GetComponentInChildren<PooManager>();
         ClanManager     ??= GetComponentInChildren<ClanManager>();
         TerritoryManager??= GetComponentInChildren<TerritoryManager>();

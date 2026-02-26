@@ -10,6 +10,11 @@ using System.Collections.Generic;
 /// </summary>
 public static class UIEventBus
 {
+    // Typed event for resource changes: (resourceName, newValue)
+    public static event Action<string, int> OnResourceChanged;
+    public static void EmitResourceChanged(string resourceName, int newValue)
+        => OnResourceChanged?.Invoke(resourceName, newValue);
+
     private static readonly Dictionary<UIEvent, Action<object>> _listeners = new();
 
     public static void On(UIEvent evt, Action<object> callback)

@@ -113,6 +113,15 @@ public class TerritoryManager : MonoBehaviour
     public Dictionary<string, string> GetSaveData()
         => _districts.ToDictionary(kv => kv.Key, kv => kv.Value.OwnerId);
 
+    public void ClaimDistrict(string districtId, string ownerId)
+    {
+        if (_districts.TryGetValue(districtId, out var d))
+        {
+            d.OwnerId = ownerId;
+            Debug.Log($"[TerritoryManager] {districtId} claimed by {ownerId}");
+        }
+    }
+
     public void LoadSaveData(Dictionary<string, string> saved)
     {
         if (saved == null) return;
@@ -130,6 +139,7 @@ public class District
     public int     GridX, GridY;
     public Vector2 Center;
     public string  OwnerId;     // empty = unclaimed
+    public List<string> PooIds = new();
     public bool    IsOwned      => !string.IsNullOrEmpty(OwnerId);
     public bool    IsPlayerOwned => OwnerId == (ClanManager.Instance?.ClanId ?? "__none__");
 }

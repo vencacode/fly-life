@@ -23,13 +23,13 @@ public class ResourceManager : MonoBehaviour
     public void AddPooResources(int amount)
     {
         PooResources += amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("PooResources", PooResources);
     }
     public bool SpendPooResources(int amount)
     {
         if (PooResources < amount) return false;
         PooResources -= amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("PooResources", PooResources);
         return true;
     }
 
@@ -37,13 +37,13 @@ public class ResourceManager : MonoBehaviour
     public void AddTrashResources(int amount)
     {
         TrashResources += amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("TrashResources", TrashResources);
     }
     public bool SpendTrashResources(int amount)
     {
         if (TrashResources < amount) return false;
         TrashResources -= amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("TrashResources", TrashResources);
         return true;
     }
 
@@ -51,13 +51,13 @@ public class ResourceManager : MonoBehaviour
     public void AddCoins(int amount)
     {
         ClanCoins += amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("ClanCoins", ClanCoins);
     }
     public bool SpendCoins(int amount)
     {
         if (ClanCoins < amount) return false;
         ClanCoins -= amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("ClanCoins", ClanCoins);
         return true;
     }
 
@@ -65,13 +65,13 @@ public class ResourceManager : MonoBehaviour
     public void AddGems(int amount)
     {
         Gems += amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("Gems", Gems);
     }
     public bool SpendGems(int amount)
     {
         if (Gems < amount) return false;
         Gems -= amount;
-        UIEventBus.Emit(UIEvent.ResourceChanged, null);
+        UIEventBus.EmitResourceChanged("Gems", Gems);
         return true;
     }
 
