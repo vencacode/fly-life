@@ -36,7 +36,7 @@ public class DistrictInfoPanel : MonoBehaviour
 
         DistrictNameText.text = d.Name;
 
-        bool isPlayer = d.OwnerId == "player";
+        bool isPlayer = d.OwnerId == (ClanManager.Instance?.ClanId ?? "player_clan");
         bool isEnemy  = !string.IsNullOrEmpty(d.OwnerId) && !isPlayer;
         bool isNeutral = string.IsNullOrEmpty(d.OwnerId);
 
@@ -54,7 +54,7 @@ public class DistrictInfoPanel : MonoBehaviour
     string GetBonusText(District d)
     {
         if (string.IsNullOrEmpty(d.OwnerId)) return "";
-        return d.OwnerId == "player"
+        return d.OwnerId == (ClanManager.Instance?.ClanId ?? "player_clan")
             ? "✨ +10% egg hatch speed"
             : "⚠️ Enemy gets +10% resources";
     }
@@ -78,7 +78,7 @@ public class DistrictInfoPanel : MonoBehaviour
     {
         if (_current == null) return;
         Debug.Log($"[InfoPanel] Claim {_current.Name}");
-        TerritoryManager.Instance?.ClaimDistrict(_current.Id, "player");
+        TerritoryManager.Instance?.ClaimDistrict(_current.Id, (ClanManager.Instance?.ClanId ?? "player_clan"));
         MapManager.Instance?.RefreshAllTiles();
         Show(_current); // refresh panel
     }

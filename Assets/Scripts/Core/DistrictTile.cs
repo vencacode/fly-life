@@ -36,7 +36,7 @@ public class DistrictTile : MonoBehaviour, IPointerClickHandler
         if (!TerritoryManager.Instance.Districts.TryGetValue(DistrictId, out var d)) return;
 
         Color c = NeutralColor;
-        if (d.OwnerId == "player") c = PlayerColor;
+        if (d.OwnerId == (ClanManager.Instance?.ClanId ?? "player_clan")) c = PlayerColor;
         else if (!string.IsNullOrEmpty(d.OwnerId)) c = EnemyColor;
 
         if (Background) Background.color = _selected ? SelectedColor : c;

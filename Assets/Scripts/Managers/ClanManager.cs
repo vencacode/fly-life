@@ -55,6 +55,11 @@ public class ClanManager : MonoBehaviour
 
     void SpawnStartingFly()
     {
+        if (ScoutRoleData == null)
+        {
+            Debug.LogWarning("[ClanManager] ScoutRoleData not assigned — skipping starting fly.");
+            return;
+        }
         var fly = CreateFly(FlyRole.Scout);
         _flies.Add(fly);
         Debug.Log("[ClanManager] Starting fly spawned. Welcome to Fly Life.");

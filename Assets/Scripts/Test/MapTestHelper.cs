@@ -12,7 +12,8 @@ public static class MapTestHelper
         // TerritoryManager has generated fresh districts; MapManager hasn't
         // spawned tiles yet — so RefreshAllTiles() in MapManager.Start() will
         // pick up the claims automatically.
-        TerritoryManager.Instance?.ClaimDistrict("district_2_2", "player");
+        TerritoryManager.Instance?.ClaimDistrict("district_2_2",
+            ClanManager.Instance?.ClanId ?? "player_clan");
         TerritoryManager.Instance?.ClaimDistrict("district_0_4", "enemy_clan");
         TerritoryManager.Instance?.ClaimDistrict("district_4_0", "enemy_clan");
 
