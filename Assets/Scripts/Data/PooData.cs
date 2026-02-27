@@ -44,6 +44,8 @@ public class PooInstance
     public UnityEngine.Vector2 WorldPosition;
     public string   DistrictId;
 
+    [System.NonSerialized] public UnityEngine.GameObject MarkerObject;
+
     public bool IsDry => UnityEngine.Time.time - SpawnTime >= Duration;
     public bool IsOwned => !string.IsNullOrEmpty(OwnerId);
     public int ResourceYield => UnityEngine.Mathf.RoundToInt((100 - Leftovers) / 10f);

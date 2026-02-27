@@ -11,8 +11,12 @@ public class PooManager : MonoBehaviour
 
     [Header("Config")]
     public PooData[] AllPooTypes;           // assign all PooData SOs in Inspector
-    public float SpawnIntervalSeconds = 60f;
+    public float SpawnIntervalSeconds = 30f;
     public int   MaxPoosOnMap         = 50;
+
+    [Header("Visuals")]
+    public GameObject PooMarkerPrefab;      // assign in Inspector
+    public Transform  MarkersParent;
 
     private List<PooInstance> _activePoos = new();
     private float _nextSpawnTime;
@@ -27,7 +31,10 @@ public class PooManager : MonoBehaviour
 
     void Update()
     {
-        // Remove dried poos
+        // Remove dried poos and destroy their markers
+        foreach (var p in _activePoos)
+            if (p.IsDry && p.MarkerObject != null)
+                GameObject.Destroy(p.MarkerObject);
         _activePoos.RemoveAll(p => p.IsDry);
 
         // Spawn new poos
@@ -97,7 +104,8 @@ public class PooManager : MonoBehaviour
 
     PooInstance CreateInstance(PooData data, Vector2 pos)
     {
-        return new PooInstance
+        string districtId = GetDistrictAtPosition(pos);
+        var poo = new PooInstance
         {
             PooDataId    = data.name,
             Fertility    = Random.Range(data.FertilityMin,   data.FertilityMax + 1),
@@ -107,20 +115,54 @@ public class PooManager : MonoBehaviour
             SpawnTime    = Time.time,
             Duration     = data.BaseDurationSeconds,
             WorldPosition= pos,
-            DistrictId   = GetDistrictAtPosition(pos)
+            DistrictId   = districtId
         };
+
+        // Register poo in district
+        if (!string.IsNullOrEmpty(districtId) && TerritoryManager.Instance != null)
+            if (TerritoryManager.Instance.Districts.TryGetValue(districtId, out var d))
+                d.PooIds.Add(poo.PooDataId + "_" + poo.SpawnTime);
+
+        // Spawn visual marker
+        SpawnMarker(poo);
+
+        return poo;
+    }
+
+    void SpawnMarker(PooInstance poo)
+    {
+        if (PooMarkerPrefab == null) return;
+        var parent = MarkersParent ?? transform;
+        var go = GameObject.Instantiate(PooMarkerPrefab, (Vector3)poo.WorldPosition, Quaternion.identity, parent);
+        go.name = $"Poo_{poo.DistrictId}";
+        poo.MarkerObject = go;
     }
 
     Vector2 RandomCityPosition()
     {
-        // TODO: replace with actual city map bounds from TerritoryManager
-        return new Vector2(Random.Range(-20f, 20f), Random.Range(-20f, 20f));
+        var tm = TerritoryManager.Instance;
+        if (tm == null) return Vector2.zero;
+
+        // Pick a random district then offset randomly within it
+        var districts = tm.Districts.Values.ToList();
+        var d = districts[Random.Range(0, districts.Count)];
+        float half = tm.DistrictSize * 0.4f;
+        return d.Center + new Vector2(Random.Range(-half, half), Random.Range(-half, half));
     }
 
     string GetDistrictAtPosition(Vector2 pos)
     {
-        // TODO: query TerritoryManager for district at pos
-        return "district_default";
+        var tm = TerritoryManager.Instance;
+        if (tm == null) return string.Empty;
+
+        float half = tm.DistrictSize * 0.5f;
+        foreach (var d in tm.Districts.Values)
+        {
+            if (Mathf.Abs(pos.x - d.Center.x) <= half &&
+                Mathf.Abs(pos.y - d.Center.y) <= half)
+                return d.Id;
+        }
+        return string.Empty;
     }
 
     // ---- Save / Load ----
