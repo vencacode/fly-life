@@ -43,7 +43,7 @@ public class DistrictTile : MonoBehaviour, IPointerClickHandler
         if (StatsLabel)
         {
             int pooCount = d.PooIds?.Count ?? 0;
-            StatsLabel.text = pooCount > 0 ? $"{pooCount} 💩" : "";
+            StatsLabel.text = pooCount > 0 ? $"{pooCount} poo" : "";
         }
     }
 

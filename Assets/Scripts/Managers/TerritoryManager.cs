@@ -45,6 +45,34 @@ public class TerritoryManager : MonoBehaviour
         Debug.Log($"[TerritoryManager] Generated {_districts.Count} districts.");
     }
 
+    void Start()
+    {
+        SeedTestData();
+    }
+
+    /// <summary>Hardcoded test districts for UI testing. Remove before shipping.</summary>
+    void SeedTestData()
+    {
+        string playerClan = ClanManager.Instance?.ClanId ?? "player_clan";
+
+        // 2 player-owned
+        ClaimDistrict("district_2_2", playerClan);
+        ClaimDistrict("district_1_2", playerClan);
+
+        // 2 enemy-owned
+        ClaimDistrict("district_0_4", "enemy_clan");
+        ClaimDistrict("district_4_0", "enemy_clan");
+
+        // Add some fake poo IDs so UI shows counts
+        if (_districts.TryGetValue("district_2_2", out var center))
+            center.PooIds.AddRange(new[] { "poo_1", "poo_2", "poo_3" });
+        if (_districts.TryGetValue("district_0_4", out var enemy))
+            enemy.PooIds.AddRange(new[] { "poo_4", "poo_5" });
+
+        // remaining 21 districts stay unclaimed
+        Debug.Log("[TerritoryManager] Test data seeded: 2 player, 2 enemy, 21 neutral.");
+    }
+
     /// <summary>Called by PooManager when a poo changes ownership.</summary>
     public void EvaluateDistrict(string districtId)
     {
@@ -82,6 +110,9 @@ public class TerritoryManager : MonoBehaviour
             }
         }
     }
+
+    public District GetDistrict(string id)
+        => _districts.GetValueOrDefault(id);
 
     public District GetDistrictAt(Vector2 worldPos)
     {
@@ -129,17 +160,4 @@ public class TerritoryManager : MonoBehaviour
             if (_districts.ContainsKey(id))
                 _districts[id].OwnerId = ownerId;
     }
-}
-
-[System.Serializable]
-public class District
-{
-    public string  Id;
-    public string  Name;
-    public int     GridX, GridY;
-    public Vector2 Center;
-    public string  OwnerId;     // empty = unclaimed
-    public List<string> PooIds = new();
-    public bool    IsOwned      => !string.IsNullOrEmpty(OwnerId);
-    public bool    IsPlayerOwned => OwnerId == (ClanManager.Instance?.ClanId ?? "__none__");
 }

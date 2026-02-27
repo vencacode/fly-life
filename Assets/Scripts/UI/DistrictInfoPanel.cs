@@ -40,8 +40,8 @@ public class DistrictInfoPanel : MonoBehaviour
         bool isEnemy  = !string.IsNullOrEmpty(d.OwnerId) && !isPlayer;
         bool isNeutral = string.IsNullOrEmpty(d.OwnerId);
 
-        OwnerText.text    = isPlayer ? "🟢 Yours" : isEnemy ? "🔴 Enemy" : "⚪ Unclaimed";
-        PooCountText.text = $"💩 {d.PooIds?.Count ?? 0} poos spotted";
+        OwnerText.text    = isPlayer ? "[YOURS]" : isEnemy ? "[ENEMY]" : "[UNCLAIMED]";
+        PooCountText.text = $"{d.PooIds?.Count ?? 0} poos spotted";
         BonusText.text    = GetBonusText(d);
 
         SendFliesButton?.gameObject.SetActive(isPlayer);
@@ -55,8 +55,8 @@ public class DistrictInfoPanel : MonoBehaviour
     {
         if (string.IsNullOrEmpty(d.OwnerId)) return "";
         return d.OwnerId == (ClanManager.Instance?.ClanId ?? "player_clan")
-            ? "✨ +10% egg hatch speed"
-            : "⚠️ Enemy gets +10% resources";
+            ? "+10% egg hatch speed"
+            : "Enemy gets +10% resources";
     }
 
     void OnSendFlies()

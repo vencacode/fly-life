@@ -1,6 +1,6 @@
 /// <summary>
-/// TEMP: Claims 3 districts on play-mode start so we can screenshot the
-/// ownership colours and DistrictInfoPanel.  Remove before shipping.
+/// TEMP: Auto-bootstraps the map test scene on play-mode start.
+/// Creates UI if missing, then selects center tile.  Remove before shipping.
 /// </summary>
 public static class MapTestHelper
 {
@@ -8,17 +8,13 @@ public static class MapTestHelper
         UnityEngine.RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Init()
     {
-        // Runs after all Awake()s, before all Start()s.
-        // TerritoryManager has generated fresh districts; MapManager hasn't
-        // spawned tiles yet — so RefreshAllTiles() in MapManager.Start() will
-        // pick up the claims automatically.
-        TerritoryManager.Instance?.ClaimDistrict("district_2_2",
-            ClanManager.Instance?.ClanId ?? "player_clan");
-        TerritoryManager.Instance?.ClaimDistrict("district_0_4", "enemy_clan");
-        TerritoryManager.Instance?.ClaimDistrict("district_4_0", "enemy_clan");
+        // Ensure UI canvas + DistrictInfoPanel exist
+        var bootstrap = new UnityEngine.GameObject("__MapSceneBootstrap__");
+        bootstrap.AddComponent<MapSceneBootstrap>();
 
-        var go = new UnityEngine.GameObject("__MapTestRunner__");
-        go.AddComponent<MapTestRunner>();
+        // Auto-select center tile after one frame
+        var runner = new UnityEngine.GameObject("__MapTestRunner__");
+        runner.AddComponent<MapTestRunner>();
     }
 }
 
@@ -27,8 +23,9 @@ public class MapTestRunner : UnityEngine.MonoBehaviour
 {
     System.Collections.IEnumerator Start()
     {
-        yield return null;                                  // let MapManager.Start() run
+        yield return null;
         MapManager.Instance?.OnDistrictTapped("district_2_2");
+        UnityEngine.Debug.Log("[MapTestRunner] Auto-selected district_2_2 for testing.");
         Destroy(gameObject);
     }
 }
