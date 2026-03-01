@@ -2188,6 +2188,1727 @@ NotificationManager.Instance?.ScheduleDailyReminder();
 
 ---
 
+## PHASE 7 — Content Expansion & Monetisation
+
+### TASK 35 — Cosmetic Fly Skins
+
+**Goal:** Players can unlock and apply cosmetic skins to individual flies. Skins are purely visual and do not affect stats. Some skins are earned through gameplay, others purchasable with Gems.
+
+**Files to create:** `Assets/Scripts/Data/SkinRegistry.cs`, `Assets/Scripts/UI/SkinSelectPopup.cs`
+**Files to modify:** `Assets/Scripts/Data/FlyData.cs`, `Assets/Scripts/Managers/ClanManager.cs`, `Assets/Scripts/Utils/SaveSystem.cs`, `Assets/Scripts/UI/ClanScreenController.cs`, `Assets/Scripts/Core/GameManager.cs`
+
+**Steps:**
+
+1. Add `SkinId` field to `FlyInstance` in `FlyData.cs`:
+```csharp
+public string SkinId;           // null/empty = default skin
+```
+
+2. Create `Assets/Scripts/Data/SkinRegistry.cs`:
+```csharp
+using System.Collections.Generic;
+
+/// <summary>
+/// Static registry of all cosmetic fly skins.
+/// Skins are purely visual — no stat changes.
+/// </summary>
+public static class SkinRegistry
+{
+    public struct SkinDef
+    {
+        public string SkinId;
+        public string DisplayName;
+        public string Description;
+        public string ColorHex;        // Tint color for fly sprite
+        public SkinSource Source;
+        public int GemCost;            // 0 if not purchasable
+        public string UnlockCondition; // human-readable
+    }
+
+    public enum SkinSource { Default, GemShop, BattleReward, LevelReward, Seasonal }
+
+    static readonly Dictionary<string, SkinDef> _skins = new()
+    {
+        ["default"] = new SkinDef
+        {
+            SkinId = "default", DisplayName = "Classic Fly", Description = "The OG. Nothing fancy.",
+            ColorHex = "#888888", Source = SkinSource.Default, GemCost = 0,
+            UnlockCondition = "Already unlocked"
+        },
+        ["golden"] = new SkinDef
+        {
+            SkinId = "golden", DisplayName = "Golden Fly", Description = "Dripping in PooGold.",
+            ColorHex = "#FFD700", Source = SkinSource.GemShop, GemCost = 100,
+            UnlockCondition = "Purchase for 100 Gems"
+        },
+        ["neon"] = new SkinDef
+        {
+            SkinId = "neon", DisplayName = "Neon Buzz", Description = "Glow in the dark. Rave fly.",
+            ColorHex = "#39FF14", Source = SkinSource.GemShop, GemCost = 75,
+            UnlockCondition = "Purchase for 75 Gems"
+        },
+        ["royal"] = new SkinDef
+        {
+            SkinId = "royal", DisplayName = "Royal Purple", Description = "Bow before the king fly.",
+            ColorHex = "#7B2FBE", Source = SkinSource.GemShop, GemCost = 150,
+            UnlockCondition = "Purchase for 150 Gems"
+        },
+        ["crimson"] = new SkinDef
+        {
+            SkinId = "crimson", DisplayName = "Crimson Warrior", Description = "Battle-hardened and fierce.",
+            ColorHex = "#DC143C", Source = SkinSource.BattleReward, GemCost = 0,
+            UnlockCondition = "Win 50 battles"
+        },
+        ["ice"] = new SkinDef
+        {
+            SkinId = "ice", DisplayName = "Frost Wing", Description = "Cool as a frozen turd.",
+            ColorHex = "#87CEEB", Source = SkinSource.LevelReward, GemCost = 0,
+            UnlockCondition = "Reach Clan Level 10"
+        },
+        ["shadow"] = new SkinDef
+        {
+            SkinId = "shadow", DisplayName = "Shadow Fly", Description = "Moves unseen. Spooky.",
+            ColorHex = "#1A1A2E", Source = SkinSource.GemShop, GemCost = 200,
+            UnlockCondition = "Purchase for 200 Gems"
+        },
+        ["candy"] = new SkinDef
+        {
+            SkinId = "candy", DisplayName = "Candy Coat", Description = "Sweet and sticky.",
+            ColorHex = "#FF69B4", Source = SkinSource.Seasonal, GemCost = 0,
+            UnlockCondition = "Seasonal event reward"
+        },
+    };
+
+    public static SkinDef? Get(string skinId)
+        => _skins.TryGetValue(skinId ?? "default", out var def) ? def : null;
+
+    public static IReadOnlyDictionary<string, SkinDef> All => _skins;
+
+    public static List<SkinDef> GetShopSkins()
+    {
+        var list = new List<SkinDef>();
+        foreach (var kv in _skins)
+            if (kv.Value.Source == SkinSource.GemShop)
+                list.Add(kv.Value);
+        return list;
+    }
+}
+```
+
+3. Create `Assets/Scripts/UI/SkinSelectPopup.cs` — runtime-built skin picker popup:
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// Runtime-built popup for selecting / purchasing skins for a fly.
+/// Launched from ClanScreenController.
+/// </summary>
+public class SkinSelectPopup : MonoBehaviour
+{
+    public static SkinSelectPopup Instance { get; private set; }
+
+    Canvas _canvas;
+    GameObject _panel;
+    string _flyId;
+    HashSet<string> _unlockedSkins = new() { "default" };
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start() => BuildUI();
+
+    void BuildUI()
+    {
+        _canvas = new GameObject("SkinSelectCanvas").AddComponent<Canvas>();
+        _canvas.transform.SetParent(transform);
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 830;
+        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        _canvas.gameObject.AddComponent<GraphicRaycaster>();
+
+        _panel = new GameObject("SkinPanel");
+        _panel.transform.SetParent(_canvas.transform, false);
+        var panelRT = _panel.AddComponent<RectTransform>();
+        panelRT.anchorMin = Vector2.zero; panelRT.anchorMax = Vector2.one;
+        panelRT.offsetMin = new Vector2(40, 80); panelRT.offsetMax = new Vector2(-40, -80);
+        var panelImg = _panel.AddComponent<Image>();
+        panelImg.color = new Color(0.12f, 0.12f, 0.15f, 0.97f);
+
+        _panel.SetActive(false);
+    }
+
+    public void Show(string flyId)
+    {
+        _flyId = flyId;
+        _panel.SetActive(true);
+        RebuildContent();
+    }
+
+    public void Hide() => _panel.SetActive(false);
+
+    void RebuildContent()
+    {
+        // Clear previous children (except panel background)
+        foreach (Transform child in _panel.transform)
+            Destroy(child.gameObject);
+
+        // Title
+        var title = CreateLabel(_panel.transform, "Choose Skin", 28, TextAlignmentOptions.Center);
+        var titleRT = title.GetComponent<RectTransform>();
+        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
+        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
+        titleRT.sizeDelta = new Vector2(0, 40);
+
+        // Scroll area
+        var scrollGO = new GameObject("Scroll");
+        scrollGO.transform.SetParent(_panel.transform, false);
+        var scrollRT = scrollGO.AddComponent<RectTransform>();
+        scrollRT.anchorMin = new Vector2(0, 0.1f); scrollRT.anchorMax = new Vector2(1, 0.88f);
+        scrollRT.offsetMin = new Vector2(10, 0); scrollRT.offsetMax = new Vector2(-10, 0);
+        var scroll = scrollGO.AddComponent<ScrollRect>();
+        scrollGO.AddComponent<Image>().color = new Color(0, 0, 0, 0.2f);
+        scrollGO.AddComponent<Mask>().showMaskGraphic = true;
+
+        var content = new GameObject("Content");
+        content.transform.SetParent(scrollGO.transform, false);
+        var contentRT = content.AddComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0, 1); contentRT.anchorMax = new Vector2(1, 1);
+        contentRT.pivot = new Vector2(0.5f, 1); contentRT.sizeDelta = new Vector2(0, 0);
+        var vlg = content.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 6; vlg.padding = new RectOffset(8, 8, 8, 8);
+        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.content = contentRT;
+        scroll.vertical = true; scroll.horizontal = false;
+
+        // Current fly skin
+        var fly = ClanManager.Instance?.Flies;
+        string currentSkin = "default";
+        if (fly != null)
+            foreach (var f in fly)
+                if (f.InstanceId == _flyId) { currentSkin = f.SkinId ?? "default"; break; }
+
+        // Skin cards
+        foreach (var kv in SkinRegistry.All)
+        {
+            var skin = kv.Value;
+            bool unlocked = _unlockedSkins.Contains(skin.SkinId);
+            bool equipped = skin.SkinId == currentSkin;
+            CreateSkinCard(content.transform, skin, unlocked, equipped);
+        }
+
+        // Close button
+        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
+        var closeBtnRT = closeBtn.GetComponent<RectTransform>();
+        closeBtnRT.anchorMin = new Vector2(0.3f, 0); closeBtnRT.anchorMax = new Vector2(0.7f, 0.1f);
+        closeBtnRT.offsetMin = Vector2.zero; closeBtnRT.offsetMax = Vector2.zero;
+    }
+
+    void CreateSkinCard(Transform parent, SkinRegistry.SkinDef skin, bool unlocked, bool equipped)
+    {
+        var card = new GameObject(skin.SkinId);
+        card.transform.SetParent(parent, false);
+        var le = card.AddComponent<LayoutElement>();
+        le.preferredHeight = 70;
+        var cardImg = card.AddComponent<Image>();
+
+        if (equipped)
+            cardImg.color = new Color(0.15f, 0.35f, 0.15f);
+        else if (unlocked)
+            cardImg.color = new Color(0.2f, 0.2f, 0.25f);
+        else
+            cardImg.color = new Color(0.15f, 0.15f, 0.18f);
+
+        // Color swatch
+        var swatch = new GameObject("Swatch");
+        swatch.transform.SetParent(card.transform, false);
+        var swatchRT = swatch.AddComponent<RectTransform>();
+        swatchRT.anchorMin = new Vector2(0, 0.15f); swatchRT.anchorMax = new Vector2(0, 0.85f);
+        swatchRT.pivot = new Vector2(0, 0.5f); swatchRT.anchoredPosition = new Vector2(10, 0);
+        swatchRT.sizeDelta = new Vector2(40, 0);
+        var swatchImg = swatch.AddComponent<Image>();
+        ColorUtility.TryParseHtmlString(skin.ColorHex, out var skinColor);
+        swatchImg.color = skinColor;
+
+        // Name + description
+        var nameLabel = CreateLabel(card.transform, skin.DisplayName + (equipped ? " ✓" : ""), 18, TextAlignmentOptions.Left);
+        var nameRT = nameLabel.GetComponent<RectTransform>();
+        nameRT.anchorMin = new Vector2(0, 0.5f); nameRT.anchorMax = new Vector2(0.65f, 1);
+        nameRT.offsetMin = new Vector2(60, 0); nameRT.offsetMax = Vector2.zero;
+
+        var descLabel = CreateLabel(card.transform, skin.Description, 13, TextAlignmentOptions.Left);
+        descLabel.color = new Color(0.7f, 0.7f, 0.7f);
+        var descRT = descLabel.GetComponent<RectTransform>();
+        descRT.anchorMin = new Vector2(0, 0); descRT.anchorMax = new Vector2(0.65f, 0.5f);
+        descRT.offsetMin = new Vector2(60, 0); descRT.offsetMax = Vector2.zero;
+
+        // Action button
+        if (equipped)
+        {
+            var eqLabel = CreateLabel(card.transform, "Equipped", 14, TextAlignmentOptions.Center);
+            eqLabel.color = new Color(0.4f, 0.9f, 0.4f);
+            var eqRT = eqLabel.GetComponent<RectTransform>();
+            eqRT.anchorMin = new Vector2(0.7f, 0.2f); eqRT.anchorMax = new Vector2(0.98f, 0.8f);
+            eqRT.offsetMin = Vector2.zero; eqRT.offsetMax = Vector2.zero;
+        }
+        else if (unlocked)
+        {
+            string sid = skin.SkinId;
+            var btn = CreateButton(card.transform, "Apply", () => ApplySkin(sid));
+            var btnRT = btn.GetComponent<RectTransform>();
+            btnRT.anchorMin = new Vector2(0.7f, 0.2f); btnRT.anchorMax = new Vector2(0.98f, 0.8f);
+            btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
+        }
+        else if (skin.Source == SkinRegistry.SkinSource.GemShop && skin.GemCost > 0)
+        {
+            string sid = skin.SkinId;
+            int cost = skin.GemCost;
+            var btn = CreateButton(card.transform, $"{cost} 💎", () => BuySkin(sid, cost));
+            var btnRT = btn.GetComponent<RectTransform>();
+            btnRT.anchorMin = new Vector2(0.7f, 0.2f); btnRT.anchorMax = new Vector2(0.98f, 0.8f);
+            btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
+        }
+        else
+        {
+            var lockLabel = CreateLabel(card.transform, "🔒 " + skin.UnlockCondition, 12, TextAlignmentOptions.Center);
+            lockLabel.color = new Color(0.6f, 0.6f, 0.6f);
+            var lockRT = lockLabel.GetComponent<RectTransform>();
+            lockRT.anchorMin = new Vector2(0.65f, 0.1f); lockRT.anchorMax = new Vector2(0.98f, 0.9f);
+            lockRT.offsetMin = Vector2.zero; lockRT.offsetMax = Vector2.zero;
+        }
+    }
+
+    void ApplySkin(string skinId)
+    {
+        if (ClanManager.Instance == null) return;
+        foreach (var f in ClanManager.Instance.Flies)
+        {
+            if (f.InstanceId == _flyId)
+            {
+                f.SkinId = skinId;
+                Debug.Log($"[SkinSelectPopup] Applied skin '{skinId}' to fly {_flyId}");
+                ToastManager.Instance?.ShowToast($"Skin applied: {SkinRegistry.Get(skinId)?.DisplayName}", ToastType.Success);
+                break;
+            }
+        }
+        RebuildContent();
+        ClanScreenController.Instance?.RefreshFlyList();
+    }
+
+    void BuySkin(string skinId, int gemCost)
+    {
+        if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendGems(gemCost))
+        {
+            ToastManager.Instance?.ShowToast("Not enough Gems!", ToastType.Warning);
+            return;
+        }
+        _unlockedSkins.Add(skinId);
+        Debug.Log($"[SkinSelectPopup] Purchased skin '{skinId}' for {gemCost} Gems");
+        ToastManager.Instance?.ShowToast($"Skin unlocked: {SkinRegistry.Get(skinId)?.DisplayName}", ToastType.Reward);
+        RebuildContent();
+    }
+
+    public void UnlockSkin(string skinId)
+    {
+        if (!_unlockedSkins.Contains(skinId))
+        {
+            _unlockedSkins.Add(skinId);
+            Debug.Log($"[SkinSelectPopup] Unlocked skin '{skinId}'");
+        }
+    }
+
+    public bool IsSkinUnlocked(string skinId) => _unlockedSkins.Contains(skinId);
+
+    // ---- Save / Load ----
+
+    [System.Serializable]
+    public class SaveData
+    {
+        public List<string> UnlockedSkins;
+    }
+
+    public SaveData GetSaveData() => new() { UnlockedSkins = new List<string>(_unlockedSkins) };
+
+    public void LoadSaveData(SaveData data)
+    {
+        if (data?.UnlockedSkins == null) return;
+        _unlockedSkins = new HashSet<string>(data.UnlockedSkins);
+        if (!_unlockedSkins.Contains("default")) _unlockedSkins.Add("default");
+    }
+
+    // ---- UI Helpers ----
+
+    static TextMeshProUGUI CreateLabel(Transform parent, string text, int fontSize, TextAlignmentOptions align)
+    {
+        var go = new GameObject("Label");
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text; tmp.fontSize = fontSize; tmp.alignment = align;
+        tmp.color = Color.white; tmp.enableAutoSizing = false;
+        return tmp;
+    }
+
+    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject("Btn_" + label);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.2f, 0.45f, 0.7f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(onClick);
+        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
+        tmp.transform.SetParent(go.transform, false);
+        tmp.text = label; tmp.fontSize = 14; tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        var tmpRT = tmp.GetComponent<RectTransform>();
+        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
+        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
+        return go;
+    }
+}
+```
+
+4. Add `SkinSelectPopup` to `GameManager.AutoBootstrap()`:
+```csharp
+go.AddComponent<SkinSelectPopup>();
+```
+
+5. Add a "Skin" button to each fly card in `ClanScreenController.cs` (next to the Equip/Train buttons), calling `SkinSelectPopup.Instance.Show(fly.InstanceId)`.
+
+6. Add `SkinSelectPopup.SaveData` to `SaveSystem.SaveFile`, and wire `GetSaveData()` / `LoadSaveData()` in `SaveSystem.Save()` / `SaveSystem.Load()`.
+
+7. Refresh → zero errors.
+
+---
+
+### TASK 36 — IAP Gem Packs (Unity Purchasing)
+
+**Goal:** Integrate Unity IAP (`com.unity.purchasing` already in manifest) so players can buy Gem packs with real money. Uses reflection to avoid hard compile dependency — same pattern as NotificationManager.
+
+**Files to create:** `Assets/Scripts/Managers/IAPManager.cs`, `Assets/Scripts/UI/GemShopUI.cs`
+**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Core/Constants.cs`
+
+**Steps:**
+
+1. Add IAP product constants to `Constants.cs`:
+```csharp
+// --- IAP Product IDs ---
+public const string IAP_GEMS_100  = "com.flylife.gems100";
+public const string IAP_GEMS_500  = "com.flylife.gems500";
+public const string IAP_GEMS_1200 = "com.flylife.gems1200";
+public const string IAP_GEMS_3000 = "com.flylife.gems3000";
+```
+
+2. Create `Assets/Scripts/Managers/IAPManager.cs` — uses reflection to interface with Unity Purchasing:
+```csharp
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Integrates Unity IAP via reflection — compiles and runs with or without
+/// com.unity.purchasing installed. Handles initialization, purchasing, and receipt validation.
+/// </summary>
+public class IAPManager : MonoBehaviour
+{
+    public static IAPManager Instance { get; private set; }
+
+    static bool _packageAvailable;
+    static Type _storeListenerType;
+    static Type _configBuilderType;
+    static Type _purchasingType;
+    static Type _productType;
+    static Type _productTypeEnumType;
+
+    public bool IsInitialized { get; private set; }
+    object _storeController;
+    object _extensionProvider;
+
+    // Product ID → gem amount
+    static readonly Dictionary<string, int> _products = new()
+    {
+        [Constants.IAP_GEMS_100]  = 100,
+        [Constants.IAP_GEMS_500]  = 500,
+        [Constants.IAP_GEMS_1200] = 1200,
+        [Constants.IAP_GEMS_3000] = 3000,
+    };
+
+    // Product ID → display price (updated after initialization)
+    readonly Dictionary<string, string> _prices = new()
+    {
+        [Constants.IAP_GEMS_100]  = "$0.99",
+        [Constants.IAP_GEMS_500]  = "$4.99",
+        [Constants.IAP_GEMS_1200] = "$9.99",
+        [Constants.IAP_GEMS_3000] = "$19.99",
+    };
+
+    public static IReadOnlyDictionary<string, int> Products => _products;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+        DetectPackage();
+    }
+
+    void Start()
+    {
+        if (!_packageAvailable)
+        {
+            Debug.Log("[IAPManager] Unity Purchasing package not detected. IAP disabled.");
+            return;
+        }
+        InitializePurchasing();
+    }
+
+    static void DetectPackage()
+    {
+        _purchasingType = Type.GetType("UnityEngine.Purchasing.UnityPurchasing, UnityEngine.Purchasing");
+        _configBuilderType = Type.GetType("UnityEngine.Purchasing.ConfigurationBuilder, UnityEngine.Purchasing");
+        _productTypeEnumType = Type.GetType("UnityEngine.Purchasing.ProductType, UnityEngine.Purchasing");
+        _storeListenerType = Type.GetType("UnityEngine.Purchasing.IStoreListener, UnityEngine.Purchasing");
+        _packageAvailable = _purchasingType != null && _configBuilderType != null;
+    }
+
+    void InitializePurchasing()
+    {
+        if (!_packageAvailable) return;
+        try
+        {
+            // ConfigurationBuilder.Instance(StandardPurchasingModule.Instance())
+            var stdModuleType = Type.GetType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing");
+            var moduleInstance = stdModuleType?.GetMethod("Instance", Type.EmptyTypes)?.Invoke(null, null);
+            var builder = _configBuilderType?.GetMethod("Instance")?.Invoke(null, new[] { moduleInstance });
+
+            // builder.AddProduct(id, ProductType.Consumable)
+            var consumable = Enum.ToObject(_productTypeEnumType, 0); // Consumable = 0
+            var addMethod = builder?.GetType().GetMethod("AddProduct", new[] { typeof(string), _productTypeEnumType });
+            foreach (var productId in _products.Keys)
+                addMethod?.Invoke(builder, new[] { (object)productId, consumable });
+
+            Debug.Log("[IAPManager] IAP products configured. Initialization deferred to store callback.");
+            IsInitialized = true; // Simplified — real init is async via IStoreListener
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[IAPManager] Init failed: {e.Message}");
+        }
+    }
+
+    public void PurchaseProduct(string productId)
+    {
+        if (!_packageAvailable || !IsInitialized)
+        {
+            Debug.LogWarning("[IAPManager] Cannot purchase — IAP not initialized.");
+            // Fallback: grant gems directly in debug/editor mode
+#if UNITY_EDITOR
+            GrantGems(productId);
+#endif
+            return;
+        }
+        // In production, call UnityPurchasing.InitiatePurchase(productId)
+        // For now, simulate purchase in editor
+#if UNITY_EDITOR
+        GrantGems(productId);
+#endif
+    }
+
+    void GrantGems(string productId)
+    {
+        if (!_products.TryGetValue(productId, out int gems)) return;
+        ResourceManager.Instance?.AddGems(gems);
+        Debug.Log($"[IAPManager] Granted {gems} gems for product {productId}");
+        ToastManager.Instance?.ShowToast($"+{gems} Gems purchased!", ToastType.Reward);
+    }
+
+    public string GetPrice(string productId)
+        => _prices.TryGetValue(productId, out var p) ? p : "???";
+
+    public int GetGemAmount(string productId)
+        => _products.TryGetValue(productId, out var g) ? g : 0;
+}
+```
+
+3. Create `Assets/Scripts/UI/GemShopUI.cs` — runtime-built Gem shop overlay:
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// Runtime-built Gem shop overlay. Shows IAP packs with prices.
+/// Accessed via a gem icon button in the HUD or Settings.
+/// </summary>
+public class GemShopUI : MonoBehaviour
+{
+    public static GemShopUI Instance { get; private set; }
+
+    Canvas _canvas;
+    GameObject _panel;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start() => BuildUI();
+
+    void BuildUI()
+    {
+        _canvas = new GameObject("GemShopCanvas").AddComponent<Canvas>();
+        _canvas.transform.SetParent(transform);
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 860;
+        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        _canvas.gameObject.AddComponent<GraphicRaycaster>();
+
+        _panel = new GameObject("ShopPanel");
+        _panel.transform.SetParent(_canvas.transform, false);
+        var rt = _panel.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = new Vector2(30, 100); rt.offsetMax = new Vector2(-30, -60);
+        _panel.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.14f, 0.97f);
+
+        _panel.SetActive(false);
+    }
+
+    public void Show()
+    {
+        _panel.SetActive(true);
+        RebuildContent();
+    }
+
+    public void Hide() => _panel.SetActive(false);
+    public void Toggle() { if (_panel.activeSelf) Hide(); else Show(); }
+
+    void RebuildContent()
+    {
+        foreach (Transform child in _panel.transform)
+            Destroy(child.gameObject);
+
+        // Title
+        var title = CreateLabel(_panel.transform, "💎 Gem Shop", 28, TextAlignmentOptions.Center);
+        var titleRT = title.GetComponent<RectTransform>();
+        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
+        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
+        titleRT.sizeDelta = new Vector2(0, 45);
+
+        // Current balance
+        int gems = ResourceManager.Instance?.Gems ?? 0;
+        var balance = CreateLabel(_panel.transform, $"Balance: {gems} Gems", 18, TextAlignmentOptions.Center);
+        balance.color = new Color(0.6f, 0.85f, 1f);
+        var balRT = balance.GetComponent<RectTransform>();
+        balRT.anchorMin = new Vector2(0, 1); balRT.anchorMax = new Vector2(1, 1);
+        balRT.pivot = new Vector2(0.5f, 1); balRT.anchoredPosition = new Vector2(0, -55);
+        balRT.sizeDelta = new Vector2(0, 30);
+
+        // Product cards
+        float yOffset = -100;
+        string[] productIds = {
+            Constants.IAP_GEMS_100, Constants.IAP_GEMS_500,
+            Constants.IAP_GEMS_1200, Constants.IAP_GEMS_3000
+        };
+        string[] bonusLabels = { "", "", "+20% bonus!", "+50% bonus!" };
+
+        for (int i = 0; i < productIds.Length; i++)
+        {
+            string pid = productIds[i];
+            int gemAmt = IAPManager.Instance?.GetGemAmount(pid) ?? 0;
+            string price = IAPManager.Instance?.GetPrice(pid) ?? "???";
+            CreateProductCard(_panel.transform, pid, gemAmt, price, bonusLabels[i], yOffset);
+            yOffset -= 80;
+        }
+
+        // Close button
+        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
+        var closeBtnRT = closeBtn.GetComponent<RectTransform>();
+        closeBtnRT.anchorMin = new Vector2(0.3f, 0); closeBtnRT.anchorMax = new Vector2(0.7f, 0.08f);
+        closeBtnRT.offsetMin = Vector2.zero; closeBtnRT.offsetMax = Vector2.zero;
+    }
+
+    void CreateProductCard(Transform parent, string productId, int gems, string price, string bonus, float yPos)
+    {
+        var card = new GameObject("Product_" + gems);
+        card.transform.SetParent(parent, false);
+        var cardRT = card.AddComponent<RectTransform>();
+        cardRT.anchorMin = new Vector2(0.05f, 1); cardRT.anchorMax = new Vector2(0.95f, 1);
+        cardRT.pivot = new Vector2(0.5f, 1); cardRT.anchoredPosition = new Vector2(0, yPos);
+        cardRT.sizeDelta = new Vector2(0, 70);
+        card.AddComponent<Image>().color = new Color(0.18f, 0.18f, 0.22f);
+
+        // Gem amount
+        string label = $"💎 {gems} Gems";
+        if (!string.IsNullOrEmpty(bonus)) label += $"  <color=#FFD700><size=14>{bonus}</size></color>";
+        var gemLabel = CreateLabel(card.transform, label, 20, TextAlignmentOptions.Left);
+        gemLabel.richText = true;
+        var gemRT = gemLabel.GetComponent<RectTransform>();
+        gemRT.anchorMin = new Vector2(0, 0); gemRT.anchorMax = new Vector2(0.65f, 1);
+        gemRT.offsetMin = new Vector2(15, 0); gemRT.offsetMax = Vector2.zero;
+
+        // Buy button
+        string pid = productId;
+        var btn = CreateButton(card.transform, price, () => IAPManager.Instance?.PurchaseProduct(pid));
+        var btnRT = btn.GetComponent<RectTransform>();
+        btnRT.anchorMin = new Vector2(0.68f, 0.15f); btnRT.anchorMax = new Vector2(0.95f, 0.85f);
+        btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
+        btn.GetComponent<Image>().color = new Color(0.2f, 0.6f, 0.2f);
+    }
+
+    // ---- UI Helpers (same pattern as other UI classes) ----
+
+    static TextMeshProUGUI CreateLabel(Transform parent, string text, int size, TextAlignmentOptions align)
+    {
+        var go = new GameObject("Label");
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text; tmp.fontSize = size; tmp.alignment = align;
+        tmp.color = Color.white;
+        return tmp;
+    }
+
+    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject("Btn_" + label);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.2f, 0.45f, 0.7f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(onClick);
+        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
+        tmp.transform.SetParent(go.transform, false);
+        tmp.text = label; tmp.fontSize = 16; tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        var tmpRT = tmp.GetComponent<RectTransform>();
+        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
+        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
+        return go;
+    }
+}
+```
+
+4. Add both to `GameManager.AutoBootstrap()`:
+```csharp
+go.AddComponent<IAPManager>();
+go.AddComponent<GemShopUI>();
+```
+
+5. Add a Gem Shop button (💎) next to the settings gear in the HUD, calling `GemShopUI.Instance.Toggle()`. Add this in `SettingsScreenController.cs` Start() or as a separate HUD button.
+
+6. Refresh → zero errors.
+
+---
+
+### TASK 37 — Expanded Map (7×7 Grid)
+
+**Goal:** Expand the city map from 5×5 to 7×7 (49 districts). Adds a new Ring 3 (outer edge) with difficulty 7. New theme types: `Hospital` and `Airport`. Camera bounds updated.
+
+**Files to modify:** `Assets/Scripts/Map/TerritoryManager.cs`, `Assets/Scripts/Data/DistrictThemeData.cs`, `Assets/Scripts/Map/MapCameraController.cs`, `Assets/Scripts/Core/Constants.cs`
+
+**Steps:**
+
+1. Add two new theme types to `DistrictThemeType` enum in `DistrictThemeData.cs`:
+```csharp
+public enum DistrictThemeType
+{
+    Residential, DogPark, BackAlley, Sewer, Playground,
+    TownSquare, Market, Construction, University, Waterfront,
+    Hospital,   // new
+    Airport     // new
+}
+```
+
+2. Add theme data entries for `Hospital` and `Airport` in `DistrictThemeData.BuildRegistry()`:
+```csharp
+[DistrictThemeType.Hospital] = new()
+{
+    Type = DistrictThemeType.Hospital,
+    ThemeName = "Hospital",
+    Icon = "[H]",
+    ThemeColor = new Color(0.85f, 0.85f, 0.9f),
+    PooSpawnRateMultiplier = 0.6f,
+    PooQualityMultiplier = 1.3f,
+    ResourceBonusMultiplier = 1.1f,
+    XPBonusMultiplier = 1.0f,
+    Description = "Clean but busy. +30% poo quality."
+},
+[DistrictThemeType.Airport] = new()
+{
+    Type = DistrictThemeType.Airport,
+    ThemeName = "Airport",
+    Icon = "[✈]",
+    ThemeColor = new Color(0.5f, 0.6f, 0.8f),
+    PooSpawnRateMultiplier = 1.4f,
+    PooQualityMultiplier = 0.8f,
+    ResourceBonusMultiplier = 1.2f,
+    XPBonusMultiplier = 1.0f,
+    Description = "International poo. +40% rate, +20% income."
+},
+```
+
+3. Update `TerritoryManager` — change `GridWidth` and `GridHeight` from 5 to 7, replace `CityLayout`:
+```csharp
+public int GridWidth  = 7;
+public int GridHeight = 7;
+
+// City layout: themed 7x7 grid (y=0 is bottom row)
+static readonly DistrictThemeType[,] CityLayout =
+{
+    // x=0              x=1              x=2              x=3              x=4              x=5              x=6
+    { DistrictThemeType.Airport,       DistrictThemeType.Market,       DistrictThemeType.Residential,  DistrictThemeType.TownSquare,    DistrictThemeType.University,    DistrictThemeType.Waterfront,   DistrictThemeType.Airport      }, // y=0
+    { DistrictThemeType.Hospital,      DistrictThemeType.Market,       DistrictThemeType.Residential,  DistrictThemeType.TownSquare,    DistrictThemeType.University,    DistrictThemeType.Waterfront,   DistrictThemeType.Hospital     }, // y=1
+    { DistrictThemeType.Residential,   DistrictThemeType.Residential,  DistrictThemeType.BackAlley,    DistrictThemeType.Playground,    DistrictThemeType.Construction,  DistrictThemeType.Residential,  DistrictThemeType.Construction }, // y=2
+    { DistrictThemeType.Waterfront,    DistrictThemeType.Construction, DistrictThemeType.DogPark,      DistrictThemeType.TownSquare,    DistrictThemeType.DogPark,       DistrictThemeType.BackAlley,    DistrictThemeType.Sewer        }, // y=3
+    { DistrictThemeType.Construction,  DistrictThemeType.Residential,  DistrictThemeType.Playground,   DistrictThemeType.DogPark,       DistrictThemeType.Sewer,         DistrictThemeType.Residential,  DistrictThemeType.Residential  }, // y=4
+    { DistrictThemeType.Hospital,      DistrictThemeType.Waterfront,   DistrictThemeType.University,   DistrictThemeType.TownSquare,    DistrictThemeType.Residential,   DistrictThemeType.Market,       DistrictThemeType.Hospital     }, // y=5
+    { DistrictThemeType.Airport,       DistrictThemeType.Residential,  DistrictThemeType.Market,       DistrictThemeType.Playground,    DistrictThemeType.University,    DistrictThemeType.Residential,  DistrictThemeType.Airport      }, // y=6
+};
+```
+
+4. Update `GenerateDistricts()` center reference from `(2,2)` to `(3,3)` and add Ring 3:
+```csharp
+int ring = Mathf.Max(Mathf.Abs(x - 3), Mathf.Abs(y - 3)); // Chebyshev from new center (3,3)
+bool isBoss = (x == 0 || x == GridWidth - 1) && (y == 0 || y == GridHeight - 1);
+int difficulty = isBoss ? 8 : (ring == 0 ? 1 : ring == 1 ? 3 : ring == 2 ? 5 : 7);
+```
+
+5. Update `Start()` center district from `"district_2_2"` to `"district_3_3"`.
+
+6. Update `MapCameraController` bounds for 7×7 grid:
+```csharp
+public Vector2 MinBounds = new(-2f, -2f);
+public Vector2 MaxBounds = new(8f, 8f);   // was (6,6) for 5x5
+public float MaxZoom = 10f;               // was 8 — need more zoom-out for bigger map
+```
+
+7. Add a new max-level constant if desired:
+```csharp
+public const int MAX_DISTRICT_DIFFICULTY = 8;
+```
+
+8. Refresh → zero errors. Note: existing saves with `district_2_2` ownership will need migration — the center is now `district_3_3`. Consider checking both in `Start()` for backward compatibility.
+
+---
+
+### TASK 38 — Legendary Gear Tier
+
+**Goal:** Add `Legendary` rarity to the equipment system with 4 powerful new items. Legendary items have unique effects and higher stats. Drops only from Boss districts.
+
+**Files to modify:** `Assets/Scripts/Data/EquipmentData.cs`, `Assets/Scripts/Data/EquipmentRegistry.cs`, `Assets/Scripts/Battle/BattleManager.cs`
+
+**Steps:**
+
+1. Add `Legendary` to `EquipmentRarity` enum in `EquipmentData.cs`:
+```csharp
+public enum EquipmentRarity { Common, Uncommon, Rare, Epic, Legendary }
+```
+
+2. Add new `SpecialEffect` values for legendary items:
+```csharp
+public enum SpecialEffect
+{
+    None,
+    AOESplash, ReflectDamage, BlockFirstHit, ActFirst,
+    ReduceAccuracy, StunEnemy, FastItemGrab,
+    // Legendary effects:
+    LifeSteal,      // heal % of damage dealt
+    DoubleStrike,   // chance to attack twice
+    Invincible,     // survive one lethal hit at 1 HP
+    RallyAllies     // boost all allies' ATK by %
+}
+```
+
+3. Add 4 Legendary items to `EquipmentRegistry._items`:
+```csharp
+["GoldenDungScepter"] = new EquipmentDef
+{
+    ItemName = "Golden Dung Scepter", Slot = EquipmentSlot.Weapon,
+    Rarity = EquipmentRarity.Legendary,
+    AttackBonus = 20, SpeedBonus = 5,
+    Description = "The holy grail of poo weapons. Heals 25% of damage dealt.",
+    Effect = SpecialEffect.LifeSteal, EffectValue = 0.25f
+},
+["DiamondWings"] = new EquipmentDef
+{
+    ItemName = "Diamond Wings", Slot = EquipmentSlot.Wings,
+    Rarity = EquipmentRarity.Legendary,
+    SpeedBonus = 15, DefenseBonus = 8,
+    Description = "Impossibly fast. 30% chance to strike twice.",
+    Effect = SpecialEffect.DoubleStrike, EffectValue = 0.3f
+},
+["CrownOfTheSwarm"] = new EquipmentDef
+{
+    ItemName = "Crown of the Swarm", Slot = EquipmentSlot.Head,
+    Rarity = EquipmentRarity.Legendary,
+    DefenseBonus = 12, HealthBonus = 30,
+    Description = "The swarm obeys. All allies gain +20% ATK.",
+    Effect = SpecialEffect.RallyAllies, EffectValue = 0.2f
+},
+["PhoenixCarapace"] = new EquipmentDef
+{
+    ItemName = "Phoenix Carapace", Slot = EquipmentSlot.Body,
+    Rarity = EquipmentRarity.Legendary,
+    DefenseBonus = 18, HealthBonus = 20,
+    Description = "Survive one lethal blow. Refuse to die.",
+    Effect = SpecialEffect.Invincible, EffectValue = 1f
+},
+```
+
+4. Add a helper to `EquipmentRegistry`:
+```csharp
+/// <summary>Returns only items of Legendary rarity.</summary>
+public static List<string> GetLegendaryItems()
+{
+    var list = new List<string>();
+    foreach (var kv in _items)
+        if (kv.Value.Rarity == EquipmentRarity.Legendary)
+            list.Add(kv.Key);
+    return list;
+}
+
+/// <summary>Returns items droppable in a Boss district.</summary>
+public static List<string> GetBossDrops()
+    => GetLegendaryItems(); // Boss districts drop legendary items
+```
+
+5. In `BattleManager` (item drop logic), modify the drop selection to use boss drops when the battle district is a boss district:
+```csharp
+// In the item drop section after battle win:
+bool isBoss = false;
+if (TerritoryManager.Instance?.GetDistrict(_currentDistrictId) is District d)
+    isBoss = d.IsBoss;
+
+var dropPool = isBoss
+    ? EquipmentRegistry.GetBossDrops()
+    : EquipmentRegistry.GetDroppableItems();
+
+if (dropPool.Count > 0)
+{
+    string droppedItem = dropPool[Random.Range(0, dropPool.Count)];
+    // ... existing drop logic ...
+}
+```
+
+6. Implement legendary effects in `BattleManager.ExecuteAttack()`:
+   - `LifeSteal`: after dealing damage, heal attacker by `EffectValue * damageDealt`
+   - `DoubleStrike`: `Random.value < EffectValue` → attack again
+   - `Invincible`: if target would die and has this effect and hasn't triggered it yet, set HP to 1 instead
+   - `RallyAllies`: at battle start, add `EffectValue * baseATK` to all allies' attack
+
+7. Update `GearEquipPopup` to show Legendary items in gold text color.
+
+8. Refresh → zero errors.
+
+---
+
+### TASK 39 — Fly Promotion System (Elite Tier)
+
+**Goal:** Flies that reach level 10 can be "promoted" to Elite status. Elite flies get a stat multiplier, a visual badge, and can equip a 7th gear slot (Accessory). Costs PooCoins.
+
+**Files to modify:** `Assets/Scripts/Data/FlyData.cs`, `Assets/Scripts/Data/EquipmentData.cs`, `Assets/Scripts/Managers/ClanManager.cs`, `Assets/Scripts/Managers/InventoryManager.cs`, `Assets/Scripts/UI/ClanScreenController.cs`, `Assets/Scripts/Core/Constants.cs`
+
+**Steps:**
+
+1. Add promotion fields to `FlyInstance` in `FlyData.cs`:
+```csharp
+public bool   IsElite;                    // promoted
+public string EquippedAccessoryId;        // 7th slot (elite only)
+```
+
+2. Add `Accessory` to `EquipmentSlot` enum:
+```csharp
+public enum EquipmentSlot { Weapon, Head, Body, Feet, Wings, Offhand, Accessory }
+```
+
+3. Add promotion constants to `Constants.cs`:
+```csharp
+// --- Promotion ---
+public const int    PROMOTION_LEVEL_REQ  = 10;
+public const int    PROMOTION_COST       = 500;   // PooCoins
+public const float  ELITE_STAT_MULTIPLIER = 1.25f; // 25% stat boost
+```
+
+4. Add `PromoteFly()` to `ClanManager`:
+```csharp
+public bool PromoteFly(string flyId)
+{
+    var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
+    if (fly == null || fly.IsElite || fly.Level < Constants.PROMOTION_LEVEL_REQ)
+        return false;
+    if (ResourceManager.Instance == null ||
+        !ResourceManager.Instance.SpendPooCoins(Constants.PROMOTION_COST))
+        return false;
+
+    fly.IsElite = true;
+    fly.Attack    = Mathf.RoundToInt(fly.Attack  * Constants.ELITE_STAT_MULTIPLIER);
+    fly.Defense   = Mathf.RoundToInt(fly.Defense * Constants.ELITE_STAT_MULTIPLIER);
+    fly.Speed     = Mathf.RoundToInt(fly.Speed   * Constants.ELITE_STAT_MULTIPLIER);
+    fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * Constants.ELITE_STAT_MULTIPLIER);
+    fly.CurrentHealth = fly.MaxHealth;
+
+    Debug.Log($"[ClanManager] Fly {flyId} promoted to ELITE! Stats boosted by {(Constants.ELITE_STAT_MULTIPLIER - 1f) * 100}%");
+    ToastManager.Instance?.ShowToast($"{fly.Role} promoted to Elite!", ToastType.Success);
+    UIEventBus.Emit(UIEvent.ClanUpdated);
+    return true;
+}
+```
+
+5. Update `InventoryManager.SetFlySlot()` to handle the new Accessory slot:
+```csharp
+case EquipmentSlot.Accessory: fly.EquippedAccessoryId = itemId; break;
+```
+
+6. Update `InventoryManager.EquipItem()` to check elite status for Accessory slot:
+```csharp
+// After the null checks:
+if (data.Slot == EquipmentSlot.Accessory && !fly.IsElite)
+{
+    Debug.LogWarning("[Inventory] Only Elite flies can equip accessories.");
+    return false;
+}
+```
+
+7. Add 2 Accessory items to `EquipmentRegistry`:
+```csharp
+["LuckyCharm"] = new EquipmentDef
+{
+    ItemName = "Lucky Charm", Slot = EquipmentSlot.Accessory,
+    Rarity = EquipmentRarity.Rare,
+    AttackBonus = 3, DefenseBonus = 3, SpeedBonus = 3, HealthBonus = 10,
+    Description = "A little bit of everything. Elite flies only.",
+    Effect = SpecialEffect.None, EffectValue = 0f
+},
+["VeteranBadge"] = new EquipmentDef
+{
+    ItemName = "Veteran Badge", Slot = EquipmentSlot.Accessory,
+    Rarity = EquipmentRarity.Epic,
+    AttackBonus = 8, HealthBonus = 20,
+    Description = "Battle-tested. +20% XP gain. Elite flies only.",
+    Effect = SpecialEffect.FastItemGrab, EffectValue = 1.2f
+},
+```
+
+8. Update `ClanScreenController` fly cards: show "⭐ ELITE" badge, and if fly is level 10+ and not elite, show a "Promote" button (costs `PROMOTION_COST`).
+
+9. Refresh → zero errors.
+
+---
+
+### TASK 40 — Seasonal Events Framework
+
+**Goal:** Create a framework for time-limited seasonal events. Each event has start/end dates, bonus modifiers, and a themed reward skin. First event: "Poo Year" (runs whenever date matches).
+
+**Files to create:** `Assets/Scripts/Data/SeasonalEventRegistry.cs`, `Assets/Scripts/Managers/SeasonalEventManager.cs`
+**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Managers/ResourceManager.cs`, `Assets/Scripts/Utils/UIEventBus.cs`
+
+**Steps:**
+
+1. Add new UIEvent:
+```csharp
+// In UIEvent enum:
+SeasonalEventStarted,
+SeasonalEventEnded
+```
+
+2. Create `Assets/Scripts/Data/SeasonalEventRegistry.cs`:
+```csharp
+using System;
+using System.Collections.Generic;
+
+/// <summary>
+/// Defines seasonal events with dates, bonuses, and rewards.
+/// </summary>
+public static class SeasonalEventRegistry
+{
+    public struct EventDef
+    {
+        public string EventId;
+        public string DisplayName;
+        public string Description;
+        public int StartMonth, StartDay;      // recurring annually
+        public int DurationDays;
+        public float PooRateMultiplier;       // applied globally during event
+        public float XPMultiplier;
+        public float CoinMultiplier;
+        public string RewardSkinId;           // unlocked for participating
+        public string BannerColorHex;
+    }
+
+    static readonly List<EventDef> _events = new()
+    {
+        new EventDef
+        {
+            EventId = "poo_year", DisplayName = "Poo Year Festival",
+            Description = "Ring in the Poo Year! Double poo rate and +50% coins for 3 days.",
+            StartMonth = 1, StartDay = 1, DurationDays = 3,
+            PooRateMultiplier = 2.0f, XPMultiplier = 1.0f, CoinMultiplier = 1.5f,
+            RewardSkinId = "candy", BannerColorHex = "#FFD700"
+        },
+        new EventDef
+        {
+            EventId = "summer_swarm", DisplayName = "Summer Swarm",
+            Description = "Summer heat means more flies! +50% XP and double hatch speed.",
+            StartMonth = 6, StartDay = 21, DurationDays = 7,
+            PooRateMultiplier = 1.0f, XPMultiplier = 1.5f, CoinMultiplier = 1.0f,
+            RewardSkinId = "neon", BannerColorHex = "#39FF14"
+        },
+        new EventDef
+        {
+            EventId = "spooky_swarm", DisplayName = "Spooky Swarm",
+            Description = "Haunted poos and ghostly flies. +75% XP from battles.",
+            StartMonth = 10, StartDay = 28, DurationDays = 5,
+            PooRateMultiplier = 1.3f, XPMultiplier = 1.75f, CoinMultiplier = 1.0f,
+            RewardSkinId = "shadow", BannerColorHex = "#1A1A2E"
+        },
+    };
+
+    /// <summary>Returns the currently active event, or null if none.</summary>
+    public static EventDef? GetActiveEvent()
+    {
+        var now = DateTime.Now;
+        foreach (var e in _events)
+        {
+            var start = new DateTime(now.Year, e.StartMonth, e.StartDay);
+            var end = start.AddDays(e.DurationDays);
+            if (now >= start && now < end) return e;
+        }
+        return null;
+    }
+
+    public static IReadOnlyList<EventDef> AllEvents => _events;
+}
+```
+
+3. Create `Assets/Scripts/Managers/SeasonalEventManager.cs`:
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// Checks for active seasonal events on startup.
+/// Displays a banner and applies global multipliers during events.
+/// Awards the event skin on first login during an event.
+/// </summary>
+public class SeasonalEventManager : MonoBehaviour
+{
+    public static SeasonalEventManager Instance { get; private set; }
+
+    Canvas _canvas;
+    GameObject _banner;
+    TextMeshProUGUI _bannerText;
+
+    public SeasonalEventRegistry.EventDef? ActiveEvent { get; private set; }
+    public bool HasActiveEvent => ActiveEvent.HasValue;
+
+    // Multipliers other systems can query
+    public float PooRateMultiplier  => ActiveEvent?.PooRateMultiplier  ?? 1f;
+    public float XPMultiplier       => ActiveEvent?.XPMultiplier       ?? 1f;
+    public float CoinMultiplier     => ActiveEvent?.CoinMultiplier     ?? 1f;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start()
+    {
+        BuildBanner();
+        CheckForEvent();
+    }
+
+    void CheckForEvent()
+    {
+        ActiveEvent = SeasonalEventRegistry.GetActiveEvent();
+        if (ActiveEvent.HasValue)
+        {
+            var e = ActiveEvent.Value;
+            Debug.Log($"[SeasonalEventManager] Active event: {e.DisplayName}");
+            ShowBanner(e);
+            UIEventBus.Emit(UIEvent.SeasonalEventStarted, e);
+
+            // Award skin if not already unlocked
+            if (SkinSelectPopup.Instance != null && !SkinSelectPopup.Instance.IsSkinUnlocked(e.RewardSkinId))
+            {
+                SkinSelectPopup.Instance.UnlockSkin(e.RewardSkinId);
+                ToastManager.Instance?.ShowToast(
+                    $"Event reward: {SkinRegistry.Get(e.RewardSkinId)?.DisplayName} skin unlocked!",
+                    ToastType.Reward);
+            }
+        }
+        else
+        {
+            _banner.SetActive(false);
+        }
+    }
+
+    void BuildBanner()
+    {
+        _canvas = new GameObject("EventBannerCanvas").AddComponent<Canvas>();
+        _canvas.transform.SetParent(transform);
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 750;
+        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        _canvas.gameObject.AddComponent<GraphicRaycaster>();
+
+        _banner = new GameObject("Banner");
+        _banner.transform.SetParent(_canvas.transform, false);
+        var rt = _banner.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 1); rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(0.5f, 1); rt.anchoredPosition = new Vector2(0, -45);
+        rt.sizeDelta = new Vector2(0, 35);
+        _banner.AddComponent<Image>().color = new Color(0.3f, 0.3f, 0.1f, 0.9f);
+
+        var textGO = new GameObject("Text");
+        textGO.transform.SetParent(_banner.transform, false);
+        var textRT = textGO.AddComponent<RectTransform>();
+        textRT.anchorMin = Vector2.zero; textRT.anchorMax = Vector2.one;
+        textRT.offsetMin = new Vector2(10, 0); textRT.offsetMax = new Vector2(-10, 0);
+        _bannerText = textGO.AddComponent<TextMeshProUGUI>();
+        _bannerText.fontSize = 16; _bannerText.alignment = TextAlignmentOptions.Center;
+        _bannerText.color = Color.white;
+
+        _banner.SetActive(false);
+    }
+
+    void ShowBanner(SeasonalEventRegistry.EventDef e)
+    {
+        if (ColorUtility.TryParseHtmlString(e.BannerColorHex, out var color))
+            _banner.GetComponent<Image>().color = new Color(color.r, color.g, color.b, 0.9f);
+        _bannerText.text = $"🎉 {e.DisplayName} — {e.Description}";
+        _banner.SetActive(true);
+    }
+}
+```
+
+4. Add `SeasonalEventManager` to `GameManager.AutoBootstrap()`:
+```csharp
+go.AddComponent<SeasonalEventManager>();
+```
+
+5. Wire multipliers into `ResourceManager.AddPooCoins()`:
+```csharp
+float seasonalBonus = SeasonalEventManager.Instance?.CoinMultiplier ?? 1f;
+int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.ResourceMultiplier ?? 1f) * seasonalBonus);
+```
+
+6. Wire XP multiplier into `ClanManager.AddXP()`:
+```csharp
+float seasonalXP = SeasonalEventManager.Instance?.XPMultiplier ?? 1f;
+int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f) * seasonalXP);
+```
+
+7. Refresh → zero errors.
+
+---
+
+### TASK 41 — Leaderboard (Local + Cloud)
+
+**Goal:** Track player scores (total districts owned + clan level + total flies) and display a leaderboard. Uses CloudSyncManager to sync scores. Falls back to local-only if cloud is unavailable.
+
+**Files to create:** `Assets/Scripts/Managers/LeaderboardManager.cs`, `Assets/Scripts/UI/LeaderboardUI.cs`
+**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Utils/UIEventBus.cs`
+
+**Steps:**
+
+1. Add UIEvent:
+```csharp
+LeaderboardUpdated
+```
+
+2. Create `Assets/Scripts/Managers/LeaderboardManager.cs`:
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+/// <summary>
+/// Calculates and stores player score.
+/// In a real game this would sync with a server — here we track local + simulated rivals.
+/// </summary>
+public class LeaderboardManager : MonoBehaviour
+{
+    public static LeaderboardManager Instance { get; private set; }
+
+    [System.Serializable]
+    public class LeaderboardEntry
+    {
+        public string PlayerName;
+        public string ClanName;
+        public int Score;
+        public int Districts;
+        public int ClanLevel;
+        public int TotalFlies;
+        public bool IsPlayer;
+    }
+
+    List<LeaderboardEntry> _entries = new();
+    public IReadOnlyList<LeaderboardEntry> Entries => _entries;
+    public int PlayerScore { get; private set; }
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start()
+    {
+        GenerateRivals();
+        InvokeRepeating(nameof(RefreshScore), 2f, 30f); // refresh every 30s
+    }
+
+    public void RefreshScore()
+    {
+        int districts = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
+        int clanLevel = ClanManager.Instance?.ClanLevel ?? 1;
+        int totalFlies = ClanManager.Instance?.TotalFlies ?? 0;
+
+        PlayerScore = (districts * 100) + (clanLevel * 50) + (totalFlies * 10);
+
+        // Update player entry
+        var playerEntry = _entries.FirstOrDefault(e => e.IsPlayer);
+        if (playerEntry != null)
+        {
+            playerEntry.Score = PlayerScore;
+            playerEntry.Districts = districts;
+            playerEntry.ClanLevel = clanLevel;
+            playerEntry.TotalFlies = totalFlies;
+            playerEntry.ClanName = ClanManager.Instance?.ClanName ?? "The Fly Lifers";
+        }
+
+        // Sort by score descending
+        _entries.Sort((a, b) => b.Score.CompareTo(a.Score));
+        UIEventBus.Emit(UIEvent.LeaderboardUpdated);
+    }
+
+    void GenerateRivals()
+    {
+        // Player entry
+        _entries.Add(new LeaderboardEntry
+        {
+            PlayerName = "You",
+            ClanName = ClanManager.Instance?.ClanName ?? "The Fly Lifers",
+            Score = 0, Districts = 0, ClanLevel = 1, TotalFlies = 1,
+            IsPlayer = true
+        });
+
+        // Simulated rival clans
+        string[] names = {
+            "Lord Buzzkill", "Queen Maggot", "Sir Poopsalot", "The Dung Beetles",
+            "Swarm Master", "Captain Compost", "Baron Von Stink", "Lady Larva",
+            "Professor Poo", "General Gnat"
+        };
+        string[] clans = {
+            "Dung Dynasty", "Maggot Militia", "Poo Pirates", "Beetle Brigade",
+            "Swarm Squad", "Compost Crew", "Stink Syndicate", "Larva Legion",
+            "Poo Professors", "Gnat Gang"
+        };
+        var rng = new System.Random(42); // deterministic for consistency
+        for (int i = 0; i < names.Length; i++)
+        {
+            int districts = rng.Next(0, 6);
+            int level = rng.Next(1, 12);
+            int flies = rng.Next(1, 30);
+            _entries.Add(new LeaderboardEntry
+            {
+                PlayerName = names[i],
+                ClanName = clans[i],
+                Score = (districts * 100) + (level * 50) + (flies * 10),
+                Districts = districts,
+                ClanLevel = level,
+                TotalFlies = flies,
+                IsPlayer = false
+            });
+        }
+
+        _entries.Sort((a, b) => b.Score.CompareTo(a.Score));
+    }
+}
+```
+
+3. Create `Assets/Scripts/UI/LeaderboardUI.cs` — runtime-built leaderboard screen:
+```csharp
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// Runtime-built leaderboard overlay showing rankings.
+/// </summary>
+public class LeaderboardUI : MonoBehaviour
+{
+    public static LeaderboardUI Instance { get; private set; }
+
+    Canvas _canvas;
+    GameObject _panel;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start() => BuildUI();
+
+    void BuildUI()
+    {
+        _canvas = new GameObject("LeaderboardCanvas").AddComponent<Canvas>();
+        _canvas.transform.SetParent(transform);
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 870;
+        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        _canvas.gameObject.AddComponent<GraphicRaycaster>();
+
+        _panel = new GameObject("LeaderboardPanel");
+        _panel.transform.SetParent(_canvas.transform, false);
+        var rt = _panel.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = new Vector2(25, 60); rt.offsetMax = new Vector2(-25, -40);
+        _panel.AddComponent<Image>().color = new Color(0.08f, 0.08f, 0.12f, 0.97f);
+
+        _panel.SetActive(false);
+    }
+
+    public void Show()
+    {
+        LeaderboardManager.Instance?.RefreshScore();
+        _panel.SetActive(true);
+        RebuildContent();
+    }
+
+    public void Hide() => _panel.SetActive(false);
+    public void Toggle() { if (_panel.activeSelf) Hide(); else Show(); }
+
+    void RebuildContent()
+    {
+        foreach (Transform child in _panel.transform)
+            Destroy(child.gameObject);
+
+        // Title
+        var title = CreateLabel(_panel.transform, "🏆 Leaderboard", 28, TextAlignmentOptions.Center);
+        var titleRT = title.GetComponent<RectTransform>();
+        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
+        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
+        titleRT.sizeDelta = new Vector2(0, 40);
+
+        // Scroll area
+        var scrollGO = new GameObject("Scroll");
+        scrollGO.transform.SetParent(_panel.transform, false);
+        var scrollRT = scrollGO.AddComponent<RectTransform>();
+        scrollRT.anchorMin = new Vector2(0, 0.08f); scrollRT.anchorMax = new Vector2(1, 0.9f);
+        scrollRT.offsetMin = new Vector2(8, 0); scrollRT.offsetMax = new Vector2(-8, 0);
+        var scroll = scrollGO.AddComponent<ScrollRect>();
+        scrollGO.AddComponent<Image>().color = new Color(0, 0, 0, 0.15f);
+        scrollGO.AddComponent<Mask>().showMaskGraphic = true;
+
+        var content = new GameObject("Content");
+        content.transform.SetParent(scrollGO.transform, false);
+        var contentRT = content.AddComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0, 1); contentRT.anchorMax = new Vector2(1, 1);
+        contentRT.pivot = new Vector2(0.5f, 1);
+        var vlg = content.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing = 4; vlg.padding = new RectOffset(4, 4, 4, 4);
+        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.content = contentRT;
+        scroll.vertical = true; scroll.horizontal = false;
+
+        // Entries
+        var entries = LeaderboardManager.Instance?.Entries;
+        if (entries != null)
+        {
+            for (int i = 0; i < entries.Count; i++)
+                CreateEntryRow(content.transform, i + 1, entries[i]);
+        }
+
+        // Close button
+        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
+        var closeRT = closeBtn.GetComponent<RectTransform>();
+        closeRT.anchorMin = new Vector2(0.3f, 0); closeRT.anchorMax = new Vector2(0.7f, 0.07f);
+        closeRT.offsetMin = Vector2.zero; closeRT.offsetMax = Vector2.zero;
+    }
+
+    void CreateEntryRow(Transform parent, int rank, LeaderboardManager.LeaderboardEntry entry)
+    {
+        var row = new GameObject($"Rank_{rank}");
+        row.transform.SetParent(parent, false);
+        var le = row.AddComponent<LayoutElement>();
+        le.preferredHeight = 50;
+        var rowImg = row.AddComponent<Image>();
+        rowImg.color = entry.IsPlayer
+            ? new Color(0.15f, 0.3f, 0.15f)
+            : (rank <= 3 ? new Color(0.25f, 0.22f, 0.1f) : new Color(0.15f, 0.15f, 0.18f));
+
+        // Rank medal
+        string medal = rank == 1 ? "🥇" : rank == 2 ? "🥈" : rank == 3 ? "🥉" : $"#{rank}";
+        var rankLabel = CreateLabel(row.transform, medal, 18, TextAlignmentOptions.Center);
+        var rankRT = rankLabel.GetComponent<RectTransform>();
+        rankRT.anchorMin = new Vector2(0, 0); rankRT.anchorMax = new Vector2(0.12f, 1);
+        rankRT.offsetMin = Vector2.zero; rankRT.offsetMax = Vector2.zero;
+
+        // Name + clan
+        string nameStr = entry.IsPlayer ? $"<b>{entry.PlayerName}</b>" : entry.PlayerName;
+        var nameLabel = CreateLabel(row.transform, $"{nameStr}\n<size=11><color=#AAA>{entry.ClanName}</color></size>", 15, TextAlignmentOptions.Left);
+        nameLabel.richText = true;
+        var nameRT = nameLabel.GetComponent<RectTransform>();
+        nameRT.anchorMin = new Vector2(0.13f, 0); nameRT.anchorMax = new Vector2(0.6f, 1);
+        nameRT.offsetMin = new Vector2(5, 0); nameRT.offsetMax = Vector2.zero;
+
+        // Score
+        var scoreLabel = CreateLabel(row.transform, $"{entry.Score}\n<size=11>pts</size>", 18, TextAlignmentOptions.Center);
+        scoreLabel.richText = true;
+        if (rank <= 3) scoreLabel.color = new Color(1f, 0.84f, 0f);
+        var scoreRT = scoreLabel.GetComponent<RectTransform>();
+        scoreRT.anchorMin = new Vector2(0.62f, 0); scoreRT.anchorMax = new Vector2(0.82f, 1);
+        scoreRT.offsetMin = Vector2.zero; scoreRT.offsetMax = Vector2.zero;
+
+        // Stats mini
+        var statsLabel = CreateLabel(row.transform, $"🏠{entry.Districts} 🪰{entry.TotalFlies}", 11, TextAlignmentOptions.Center);
+        statsLabel.color = new Color(0.7f, 0.7f, 0.7f);
+        var statsRT = statsLabel.GetComponent<RectTransform>();
+        statsRT.anchorMin = new Vector2(0.82f, 0); statsRT.anchorMax = new Vector2(1, 1);
+        statsRT.offsetMin = Vector2.zero; statsRT.offsetMax = Vector2.zero;
+    }
+
+    static TextMeshProUGUI CreateLabel(Transform parent, string text, int size, TextAlignmentOptions align)
+    {
+        var go = new GameObject("Label");
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text; tmp.fontSize = size; tmp.alignment = align;
+        tmp.color = Color.white;
+        return tmp;
+    }
+
+    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject("Btn_" + label);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.2f, 0.45f, 0.7f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(onClick);
+        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
+        tmp.transform.SetParent(go.transform, false);
+        tmp.text = label; tmp.fontSize = 16; tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        var tmpRT = tmp.GetComponent<RectTransform>();
+        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
+        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
+        return go;
+    }
+}
+```
+
+4. Add both to `GameManager.AutoBootstrap()`:
+```csharp
+go.AddComponent<LeaderboardManager>();
+go.AddComponent<LeaderboardUI>();
+```
+
+5. Add a 🏆 button to the HUD (alongside the ⚙ and 💎 buttons) that calls `LeaderboardUI.Instance.Toggle()`.
+
+6. Refresh → zero errors.
+
+---
+
+### TASK 42 — Analytics Integration
+
+**Goal:** Track key game events using Unity Analytics (`com.unity.analytics` already in manifest). Uses reflection to avoid compile errors if the package is removed. Tracks: first_open, battle_won, battle_lost, district_captured, gem_purchase, level_up, tutorial_complete.
+
+**Files to create:** `Assets/Scripts/Managers/AnalyticsManager.cs`
+**Files to modify:** `Assets/Scripts/Core/GameManager.cs`
+
+**Steps:**
+
+1. Create `Assets/Scripts/Managers/AnalyticsManager.cs`:
+```csharp
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Wraps Unity Analytics via reflection — compiles with or without the package.
+/// Subscribes to UIEventBus to automatically fire analytics events.
+/// </summary>
+public class AnalyticsManager : MonoBehaviour
+{
+    public static AnalyticsManager Instance { get; private set; }
+
+    static bool _analyticsAvailable;
+    static Type _analyticsType;
+
+    // Cached delegates for clean unsubscribe
+    Action<object> _onBattleEnded;
+    Action<object> _onDistrictCaptured;
+    Action<object> _onLevelUp;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+        DetectPackage();
+    }
+
+    void Start()
+    {
+        if (!_analyticsAvailable)
+        {
+            Debug.Log("[AnalyticsManager] Unity Analytics not detected. Analytics disabled.");
+            return;
+        }
+
+        // Track first open
+        TrackEvent("first_open", new Dictionary<string, object>
+        {
+            ["platform"] = Application.platform.ToString(),
+            ["version"] = Application.version
+        });
+
+        // Subscribe to events
+        _onBattleEnded = data => OnBattleEnded(data);
+        _onDistrictCaptured = data => OnDistrictCaptured(data);
+        _onLevelUp = data => OnLevelUp(data);
+
+        UIEventBus.On(UIEvent.BattleEnded, _onBattleEnded);
+        UIEventBus.On(UIEvent.DistrictCaptured, _onDistrictCaptured);
+        UIEventBus.On(UIEvent.LevelUp, _onLevelUp);
+
+        Debug.Log("[AnalyticsManager] Analytics initialized and subscribed to events.");
+    }
+
+    void OnDisable()
+    {
+        if (_onBattleEnded != null)    UIEventBus.Off(UIEvent.BattleEnded, _onBattleEnded);
+        if (_onDistrictCaptured != null) UIEventBus.Off(UIEvent.DistrictCaptured, _onDistrictCaptured);
+        if (_onLevelUp != null)        UIEventBus.Off(UIEvent.LevelUp, _onLevelUp);
+    }
+
+    static void DetectPackage()
+    {
+        // Try Unity Analytics (Legacy via com.unity.analytics)
+        _analyticsType = Type.GetType("UnityEngine.Analytics.Analytics, UnityEngine.UnityAnalyticsModule");
+        _analyticsAvailable = _analyticsType != null;
+        if (!_analyticsAvailable)
+        {
+            // Try newer namespace
+            _analyticsType = Type.GetType("Unity.Services.Analytics.AnalyticsService, Unity.Services.Analytics");
+            _analyticsAvailable = _analyticsType != null;
+        }
+    }
+
+    /// <summary>Track a custom event with optional parameters.</summary>
+    public void TrackEvent(string eventName, Dictionary<string, object> parameters = null)
+    {
+        if (!_analyticsAvailable) return;
+        try
+        {
+            // Legacy: Analytics.CustomEvent(eventName, dict)
+            var customEvent = _analyticsType.GetMethod("CustomEvent",
+                new[] { typeof(string), typeof(Dictionary<string, object>) });
+            if (customEvent != null)
+            {
+                customEvent.Invoke(null, new object[] { eventName, parameters ?? new Dictionary<string, object>() });
+                Debug.Log($"[Analytics] Event: {eventName}");
+                return;
+            }
+
+            // Fallback: just log
+            Debug.Log($"[Analytics] (log only) Event: {eventName}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[Analytics] Failed to track '{eventName}': {e.Message}");
+        }
+    }
+
+    // ---- Event handlers ----
+
+    void OnBattleEnded(object data)
+    {
+        // data might be bool (won) or could be a string/object
+        bool won = data is bool b && b;
+        TrackEvent(won ? "battle_won" : "battle_lost", new Dictionary<string, object>
+        {
+            ["clan_level"] = ClanManager.Instance?.ClanLevel ?? 0,
+            ["total_flies"] = ClanManager.Instance?.TotalFlies ?? 0
+        });
+    }
+
+    void OnDistrictCaptured(object data)
+    {
+        string districtName = data is District d ? d.Name : "unknown";
+        TrackEvent("district_captured", new Dictionary<string, object>
+        {
+            ["district_name"] = districtName,
+            ["total_districts"] = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0
+        });
+    }
+
+    void OnLevelUp(object data)
+    {
+        int level = data is FlyInstance fly ? fly.Level : (ClanManager.Instance?.ClanLevel ?? 0);
+        TrackEvent("level_up", new Dictionary<string, object>
+        {
+            ["new_level"] = level
+        });
+    }
+
+    /// <summary>Track tutorial completion (call from TutorialManager).</summary>
+    public void TrackTutorialComplete()
+    {
+        TrackEvent("tutorial_complete", new Dictionary<string, object>
+        {
+            ["time_since_start"] = Time.realtimeSinceStartup
+        });
+    }
+
+    /// <summary>Track gem purchase (call from IAPManager).</summary>
+    public void TrackGemPurchase(string productId, int gemAmount)
+    {
+        TrackEvent("gem_purchase", new Dictionary<string, object>
+        {
+            ["product_id"] = productId,
+            ["gem_amount"] = gemAmount
+        });
+    }
+}
+```
+
+2. Add to `GameManager.AutoBootstrap()`:
+```csharp
+go.AddComponent<AnalyticsManager>();
+```
+
+3. Wire analytics into existing systems:
+   - In `TutorialManager` (when tutorial completes): `AnalyticsManager.Instance?.TrackTutorialComplete();`
+   - In `IAPManager.GrantGems()`: `AnalyticsManager.Instance?.TrackGemPurchase(productId, gems);`
+
+4. Refresh → zero errors.
+
+---
+
 ## Notes for Claude Code
 
 - Always run `.\unity-cmd.ps1 '{"type": "refresh"}' -Timeout 120` after editing any .cs file

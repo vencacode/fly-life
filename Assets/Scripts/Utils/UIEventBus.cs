@@ -54,5 +54,8 @@ public enum UIEvent
     CloudSyncCompleted,
     CloudSyncFailed,
     TerritoryUpdatedFromCloud,
-    DailyLoginBonus
+    DailyLoginBonus,
+    SeasonalEventStarted,
+    SeasonalEventEnded,
+    LeaderboardUpdated
 }

@@ -54,6 +54,13 @@ public class InventoryManager : MonoBehaviour
         var fly = ClanManager.Instance?.Flies.FirstOrDefault(f => f.InstanceId == flyId);
         if (fly == null) return false;
 
+        // Accessory slot requires elite status
+        if (data.Slot == EquipmentSlot.Accessory && !fly.IsElite)
+        {
+            Debug.LogWarning("[Inventory] Only Elite flies can equip accessories.");
+            return false;
+        }
+
         // Unequip existing item in that slot first
         UnequipSlot(flyId, data.Slot);
 
@@ -124,7 +131,8 @@ public class InventoryManager : MonoBehaviour
             case EquipmentSlot.Body:    fly.EquippedBodyId    = itemId; break;
             case EquipmentSlot.Feet:    fly.EquippedFeetId    = itemId; break;
             case EquipmentSlot.Wings:   fly.EquippedWingsId   = itemId; break;
-            case EquipmentSlot.Offhand: fly.EquippedOffhandId = itemId; break;
+            case EquipmentSlot.Offhand:   fly.EquippedOffhandId   = itemId; break;
+            case EquipmentSlot.Accessory: fly.EquippedAccessoryId = itemId; break;
         }
     }
 

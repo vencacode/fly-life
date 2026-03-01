@@ -38,7 +38,8 @@ public class ResourceManager : MonoBehaviour
     // ---- PooCoins ----
     public void AddPooCoins(int amount)
     {
-        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.ResourceMultiplier ?? 1f));
+        float seasonalBonus = SeasonalEventManager.Instance?.CoinMultiplier ?? 1f;
+        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.ResourceMultiplier ?? 1f) * seasonalBonus);
         PooCoins += bonus;
         UIEventBus.EmitResourceChanged("PooCoins", PooCoins);
     }

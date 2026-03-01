@@ -46,6 +46,17 @@ public static class Constants
     public const int    BOOSTER_FERTILITY_GEMS  = 25;
     public const int    BOOSTER_SHIELD_GEMS     = 30;
 
+    // --- Promotion ---
+    public const int    PROMOTION_LEVEL_REQ   = 10;
+    public const int    PROMOTION_COST        = 500;     // PooCoins
+    public const float  ELITE_STAT_MULTIPLIER = 1.25f;   // 25% stat boost
+
+    // --- IAP Product IDs ---
+    public const string IAP_GEMS_100  = "com.flylife.gems100";
+    public const string IAP_GEMS_500  = "com.flylife.gems500";
+    public const string IAP_GEMS_1200 = "com.flylife.gems1200";
+    public const string IAP_GEMS_3000 = "com.flylife.gems3000";
+
     // --- Scene names ---
     public const string SCENE_MENU             = "MainMenu";
     public const string SCENE_CITY             = "MainMap";

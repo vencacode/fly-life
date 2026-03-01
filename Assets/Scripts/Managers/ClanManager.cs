@@ -174,7 +174,8 @@ public class ClanManager : MonoBehaviour
 
     public void AddXP(int amount)
     {
-        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f));
+        float seasonalXP = SeasonalEventManager.Instance?.XPMultiplier ?? 1f;
+        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f) * seasonalXP);
         ClanXP += bonus;
         int newLevel = Mathf.FloorToInt(ClanXP / 100f) + 1;
         if (newLevel > ClanLevel)
@@ -241,6 +242,30 @@ public class ClanManager : MonoBehaviour
             UIEventBus.Emit(UIEvent.LevelUp, fly);
         }
         Debug.Log($"[ClanManager] Trained {fly.Role}: +{Constants.TRAINING_XP} XP (now {fly.XP})");
+        return true;
+    }
+
+    // ---- Promotion ----
+
+    public bool PromoteFly(string flyId)
+    {
+        var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
+        if (fly == null || fly.IsElite || fly.Level < Constants.PROMOTION_LEVEL_REQ)
+            return false;
+        if (ResourceManager.Instance == null ||
+            !ResourceManager.Instance.SpendPooCoins(Constants.PROMOTION_COST))
+            return false;
+
+        fly.IsElite = true;
+        fly.Attack    = Mathf.RoundToInt(fly.Attack  * Constants.ELITE_STAT_MULTIPLIER);
+        fly.Defense   = Mathf.RoundToInt(fly.Defense * Constants.ELITE_STAT_MULTIPLIER);
+        fly.Speed     = Mathf.RoundToInt(fly.Speed   * Constants.ELITE_STAT_MULTIPLIER);
+        fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * Constants.ELITE_STAT_MULTIPLIER);
+        fly.CurrentHealth = fly.MaxHealth;
+
+        Debug.Log($"[ClanManager] Fly {flyId} promoted to ELITE! Stats boosted by {(Constants.ELITE_STAT_MULTIPLIER - 1f) * 100}%");
+        ToastManager.Instance?.ShowToast($"{fly.Role} promoted to Elite!", ToastType.Success);
+        UIEventBus.Emit(UIEvent.ClanUpdated);
         return true;
     }
 

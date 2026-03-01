@@ -10,8 +10,8 @@ public class TerritoryManager : MonoBehaviour
     public static TerritoryManager Instance { get; private set; }
 
     [Header("Map Config")]
-    public int   GridWidth  = 5;
-    public int   GridHeight = 5;
+    public int   GridWidth  = 7;
+    public int   GridHeight = 7;
     public float DistrictSize = 10f; // Unity units per district
 
     private Dictionary<string, District> _districts = new();
@@ -25,15 +25,17 @@ public class TerritoryManager : MonoBehaviour
         GenerateDistricts();
     }
 
-    // City layout: themed 5x5 grid (y=0 is bottom row)
+    // City layout: themed 7x7 grid (y=0 is bottom row)
     static readonly DistrictThemeType[,] CityLayout =
     {
-        // x=0          x=1              x=2              x=3              x=4
-        { DistrictThemeType.Market,      DistrictThemeType.Residential,  DistrictThemeType.TownSquare,    DistrictThemeType.University,    DistrictThemeType.Waterfront   }, // y=0
-        { DistrictThemeType.Residential, DistrictThemeType.BackAlley,    DistrictThemeType.Playground,    DistrictThemeType.Construction,  DistrictThemeType.Residential  }, // y=1
-        { DistrictThemeType.Construction,DistrictThemeType.DogPark,      DistrictThemeType.TownSquare,    DistrictThemeType.DogPark,       DistrictThemeType.BackAlley    }, // y=2
-        { DistrictThemeType.Residential, DistrictThemeType.Playground,   DistrictThemeType.DogPark,       DistrictThemeType.Sewer,         DistrictThemeType.Residential  }, // y=3
-        { DistrictThemeType.Waterfront,  DistrictThemeType.University,   DistrictThemeType.TownSquare,    DistrictThemeType.Residential,   DistrictThemeType.Market       }, // y=4
+        // x=0                          x=1                            x=2                            x=3                            x=4                            x=5                            x=6
+        { DistrictThemeType.Airport,    DistrictThemeType.Market,      DistrictThemeType.Residential,  DistrictThemeType.TownSquare,   DistrictThemeType.University,   DistrictThemeType.Waterfront,  DistrictThemeType.Airport      }, // y=0
+        { DistrictThemeType.Hospital,   DistrictThemeType.Market,      DistrictThemeType.Residential,  DistrictThemeType.TownSquare,   DistrictThemeType.University,   DistrictThemeType.Waterfront,  DistrictThemeType.Hospital     }, // y=1
+        { DistrictThemeType.Residential,DistrictThemeType.Residential, DistrictThemeType.BackAlley,    DistrictThemeType.Playground,   DistrictThemeType.Construction, DistrictThemeType.Residential, DistrictThemeType.Construction }, // y=2
+        { DistrictThemeType.Waterfront, DistrictThemeType.Construction,DistrictThemeType.DogPark,      DistrictThemeType.TownSquare,   DistrictThemeType.DogPark,      DistrictThemeType.BackAlley,   DistrictThemeType.Sewer        }, // y=3
+        { DistrictThemeType.Construction,DistrictThemeType.Residential,DistrictThemeType.Playground,   DistrictThemeType.DogPark,      DistrictThemeType.Sewer,        DistrictThemeType.Residential, DistrictThemeType.Residential  }, // y=4
+        { DistrictThemeType.Hospital,   DistrictThemeType.Waterfront,  DistrictThemeType.University,   DistrictThemeType.TownSquare,   DistrictThemeType.Residential,  DistrictThemeType.Market,      DistrictThemeType.Hospital     }, // y=5
+        { DistrictThemeType.Airport,    DistrictThemeType.Residential, DistrictThemeType.Market,       DistrictThemeType.Playground,   DistrictThemeType.University,   DistrictThemeType.Residential, DistrictThemeType.Airport      }, // y=6
     };
 
     void GenerateDistricts()
@@ -46,9 +48,9 @@ public class TerritoryManager : MonoBehaviour
                 ? CityLayout[y, x]
                 : DistrictThemeType.Residential;
 
-            int ring = Mathf.Max(Mathf.Abs(x - 2), Mathf.Abs(y - 2)); // Chebyshev distance from center
+            int ring = Mathf.Max(Mathf.Abs(x - 3), Mathf.Abs(y - 3)); // Chebyshev distance from center (3,3)
             bool isBoss = (x == 0 || x == GridWidth - 1) && (y == 0 || y == GridHeight - 1);
-            int difficulty = isBoss ? 6 : (ring == 0 ? 1 : ring == 1 ? 3 : 5);
+            int difficulty = isBoss ? 8 : (ring == 0 ? 1 : ring == 1 ? 3 : ring == 2 ? 5 : 7);
 
             string id = $"district_{x}_{y}";
             _districts[id] = new District
@@ -70,10 +72,17 @@ public class TerritoryManager : MonoBehaviour
 
     void Start()
     {
-        // Center district (2,2) starts player-owned as tutorial start
+        // Center district (3,3) starts player-owned as tutorial start
         string playerClan = ClanManager.Instance?.ClanId ?? "player_clan";
-        if (_districts.TryGetValue("district_2_2", out var center) && string.IsNullOrEmpty(center.OwnerId))
+        if (_districts.TryGetValue("district_3_3", out var center) && string.IsNullOrEmpty(center.OwnerId))
             center.OwnerId = playerClan;
+        // Backward compat: old saves may have district_2_2 as player-owned
+        if (_districts.TryGetValue("district_2_2", out var oldCenter) && oldCenter.OwnerId == playerClan)
+        {
+            oldCenter.OwnerId = string.Empty;
+            if (_districts.TryGetValue("district_3_3", out var newCenter))
+                newCenter.OwnerId = playerClan;
+        }
     }
 
     /// <summary>Called by PooManager when a poo changes ownership.</summary>

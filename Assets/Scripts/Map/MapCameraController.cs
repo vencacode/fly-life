@@ -8,12 +8,12 @@ public class MapCameraController : MonoBehaviour
 {
     [Header("Zoom")]
     public float MinZoom = 3f;
-    public float MaxZoom = 8f;
+    public float MaxZoom = 10f;
     public float ZoomSpeed = 0.5f;
 
     [Header("Pan Bounds")]
     public Vector2 MinBounds = new(-2f, -2f);
-    public Vector2 MaxBounds = new(6f, 6f);
+    public Vector2 MaxBounds = new(8f, 8f);
 
     Camera _cam;
     Vector3 _dragOrigin;

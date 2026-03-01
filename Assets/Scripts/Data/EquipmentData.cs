@@ -27,8 +27,8 @@ public class EquipmentData : ScriptableObject
     public bool DropInBattle = true;
 }
 
-public enum EquipmentSlot   { Weapon, Head, Body, Feet, Wings, Offhand }
-public enum EquipmentRarity { Common, Uncommon, Rare, Epic }
+public enum EquipmentSlot   { Weapon, Head, Body, Feet, Wings, Offhand, Accessory }
+public enum EquipmentRarity { Common, Uncommon, Rare, Epic, Legendary }
 public enum SpecialEffect
 {
     None,
@@ -38,5 +38,10 @@ public enum SpecialEffect
     ActFirst,           // Sugar Cube Boots: speed priority
     ReduceAccuracy,     // Rotten Cheese Armor: enemy misses
     StunEnemy,          // Gum Wings: enemy loses turn
-    FastItemGrab        // Antenna Radar: grab items faster
+    FastItemGrab,       // Antenna Radar: grab items faster
+    // Legendary effects:
+    LifeSteal,          // heal % of damage dealt
+    DoubleStrike,       // chance to attack twice
+    Invincible,         // survive one lethal hit at 1 HP
+    RallyAllies         // boost all allies' ATK by %
 }

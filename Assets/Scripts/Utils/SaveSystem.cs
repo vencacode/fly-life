@@ -31,6 +31,7 @@ public static class SaveSystem
         public ClanManager.SaveData         Clan;
         public ResourceManager.SaveData     Resources;
         public InventoryManager.SaveData    Inventory;
+        public SkinSelectPopup.SaveData     Skins;
         public List<StringPair>             TerritoryOwners;
         public string                       LastLoginDate;
         public bool                         TutorialComplete;
@@ -55,6 +56,7 @@ public static class SaveSystem
             Clan             = ClanManager.Instance?.GetSaveData(),
             Resources        = ResourceManager.Instance?.GetSaveData(),
             Inventory        = InventoryManager.Instance?.GetSaveData(),
+            Skins            = SkinSelectPopup.Instance?.GetSaveData(),
             TerritoryOwners  = territoryList,
             LastLoginDate    = LastLoginDate,
             TutorialComplete = TutorialComplete
@@ -80,6 +82,7 @@ public static class SaveSystem
         ClanManager.Instance?.LoadSaveData(file.Clan);
         ResourceManager.Instance?.LoadSaveData(file.Resources);
         InventoryManager.Instance?.LoadSaveData(file.Inventory);
+        SkinSelectPopup.Instance?.LoadSaveData(file.Skins);
         LastLoginDate    = file.LastLoginDate;
         TutorialComplete = file.TutorialComplete;
 

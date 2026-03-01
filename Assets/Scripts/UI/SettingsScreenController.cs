@@ -47,6 +47,18 @@ public class SettingsScreenController : MonoBehaviour
             new Color(0.2f, 0.2f, 0.25f, 0.85f), 36);
         _gearButton.onClick.AddListener(Toggle);
 
+        // ── Gem shop button (top-right, next to gear) ──
+        var gemBtn = CreateButton(canvasGo.transform, "GemShopButton", "\u25C6",
+            new Vector2(0.80f, 0.94f), new Vector2(0.88f, 0.98f),
+            new Color(0.2f, 0.3f, 0.5f, 0.85f), 30);
+        gemBtn.onClick.AddListener(() => GemShopUI.Instance?.Toggle());
+
+        // ── Leaderboard button (top-right, next to gem) ──
+        var lbBtn = CreateButton(canvasGo.transform, "LeaderboardButton", "\u265F",
+            new Vector2(0.70f, 0.94f), new Vector2(0.78f, 0.98f),
+            new Color(0.4f, 0.35f, 0.15f, 0.85f), 30);
+        lbBtn.onClick.AddListener(() => LeaderboardUI.Instance?.Toggle());
+
         // ── Main settings panel (hidden by default) ──
         _panel = new GameObject("SettingsPanel");
         _panel.transform.SetParent(canvasGo.transform, false);

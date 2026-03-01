@@ -36,6 +36,7 @@ public class FlyInstance
     public int      Speed;
     public int      CurrentHealth;
     public int      MaxHealth;
+    public string   SkinId;               // null/empty = default skin
     public string   DeployedDistrictId;   // null/empty = available, otherwise deployed to this district
     public string   EquippedWeaponId;
     public string   EquippedHeadId;
@@ -43,6 +44,8 @@ public class FlyInstance
     public string   EquippedFeetId;
     public string   EquippedWingsId;
     public string   EquippedOffhandId;
+    public string   EquippedAccessoryId;  // 7th slot (elite only)
+    public bool     IsElite;              // promoted to elite tier
     public bool     IsAlive    => CurrentHealth > 0;
     public bool     IsDeployed => !string.IsNullOrEmpty(DeployedDistrictId);
 }

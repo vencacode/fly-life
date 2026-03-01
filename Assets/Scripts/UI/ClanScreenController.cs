@@ -137,8 +137,10 @@ public class ClanScreenController : MonoBehaviour
 
         // ── Row 1: Name + Stats + Gear ──
 
-        // Name + Level
-        var nameLabel = CreateText(card.transform, "Name", $"{fly.Role} Lv{fly.Level}", 18, TextAlignmentOptions.Left);
+        // Name + Level + Elite badge
+        string nameStr = fly.IsElite ? $"★ {fly.Role} Lv{fly.Level} ELITE" : $"{fly.Role} Lv{fly.Level}";
+        var nameLabel = CreateText(card.transform, "Name", nameStr, 18, TextAlignmentOptions.Left);
+        if (fly.IsElite) nameLabel.color = new Color(1f, 0.84f, 0f); // gold for elite
         var nameRect = nameLabel.GetComponent<RectTransform>();
         nameRect.anchorMin = new Vector2(0.02f, 0.55f);
         nameRect.anchorMax = new Vector2(0.3f, 1f);
@@ -160,9 +162,10 @@ public class ClanScreenController : MonoBehaviour
         statsRect.anchorMax = new Vector2(0.6f, 1f);
         statsRect.sizeDelta = Vector2.zero;
 
-        // Gear summary
+        // Gear summary + Skin
         string gear = GetGearText(fly);
-        var gearLabel = CreateText(card.transform, "Gear", gear, 12, TextAlignmentOptions.Center);
+        string skinName = SkinRegistry.Get(fly.SkinId)?.DisplayName ?? "Classic Fly";
+        var gearLabel = CreateText(card.transform, "Gear", $"{gear} | {skinName}", 12, TextAlignmentOptions.Center);
         gearLabel.color = gear == "No gear" ? new Color(0.5f, 0.5f, 0.5f) : new Color(0.9f, 0.8f, 0.4f);
         var gearRect = gearLabel.GetComponent<RectTransform>();
         gearRect.anchorMin = new Vector2(0.31f, 0.3f);
@@ -193,9 +196,37 @@ public class ClanScreenController : MonoBehaviour
         });
         var trainRect = trainBtn.GetComponent<RectTransform>();
         trainRect.anchorMin = new Vector2(0.19f, 0.02f);
-        trainRect.anchorMax = new Vector2(0.42f, 0.28f);
+        trainRect.anchorMax = new Vector2(0.36f, 0.28f);
         trainRect.sizeDelta = Vector2.zero;
         trainBtn.GetComponent<Image>().color = new Color(0.35f, 0.45f, 0.2f);
+
+        // Skin button
+        var skinBtn = CreateButton(card.transform, "SkinBtn", "Skin", () =>
+        {
+            SkinSelectPopup.Instance?.Show(flyRef.InstanceId);
+        });
+        var skinRect = skinBtn.GetComponent<RectTransform>();
+        skinRect.anchorMin = new Vector2(0.37f, 0.02f);
+        skinRect.anchorMax = new Vector2(0.52f, 0.28f);
+        skinRect.sizeDelta = Vector2.zero;
+        skinBtn.GetComponent<Image>().color = new Color(0.45f, 0.3f, 0.5f);
+
+        // Promote button (only for level 10+ non-elite flies)
+        if (!fly.IsElite && fly.Level >= Constants.PROMOTION_LEVEL_REQ)
+        {
+            var promoteBtn = CreateButton(card.transform, "PromoteBtn", $"Promote ({Constants.PROMOTION_COST})", () =>
+            {
+                if (ClanManager.Instance?.PromoteFly(flyRef.InstanceId) == true)
+                    RefreshFlyList();
+                else
+                    ToastManager.Instance?.ShowToast("Not enough PooCoins!", ToastType.Warning);
+            });
+            var promoteRect = promoteBtn.GetComponent<RectTransform>();
+            promoteRect.anchorMin = new Vector2(0.53f, 0.02f);
+            promoteRect.anchorMax = new Vector2(0.75f, 0.28f);
+            promoteRect.sizeDelta = Vector2.zero;
+            promoteBtn.GetComponent<Image>().color = new Color(0.6f, 0.5f, 0.1f);
+        }
 
         // Reassign role buttons
         float btnX = 0.62f;
@@ -227,7 +258,8 @@ public class ClanScreenController : MonoBehaviour
         if (!string.IsNullOrEmpty(fly.EquippedBodyId))    parts.Add("B");
         if (!string.IsNullOrEmpty(fly.EquippedFeetId))    parts.Add("F");
         if (!string.IsNullOrEmpty(fly.EquippedWingsId))   parts.Add("Wi");
-        if (!string.IsNullOrEmpty(fly.EquippedOffhandId)) parts.Add("O");
+        if (!string.IsNullOrEmpty(fly.EquippedOffhandId))   parts.Add("O");
+        if (!string.IsNullOrEmpty(fly.EquippedAccessoryId)) parts.Add("Acc");
         return parts.Count > 0 ? string.Join(" ", parts) : "No gear";
     }
 

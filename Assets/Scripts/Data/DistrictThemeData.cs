@@ -151,6 +151,30 @@ public class DistrictThemeData
                 ResourceBonusMultiplier = 1.0f,
                 XPBonusMultiplier = 1.0f,
                 Description = "Seaside. Rare but high-value poo."
+            },
+            [DistrictThemeType.Hospital] = new()
+            {
+                Type = DistrictThemeType.Hospital,
+                ThemeName = "Hospital",
+                Icon = "[H]",
+                ThemeColor = new Color(0.85f, 0.85f, 0.9f),
+                PooSpawnRateMultiplier = 0.6f,
+                PooQualityMultiplier = 1.3f,
+                ResourceBonusMultiplier = 1.1f,
+                XPBonusMultiplier = 1.0f,
+                Description = "Clean but busy. +30% poo quality."
+            },
+            [DistrictThemeType.Airport] = new()
+            {
+                Type = DistrictThemeType.Airport,
+                ThemeName = "Airport",
+                Icon = "[+]",
+                ThemeColor = new Color(0.5f, 0.6f, 0.8f),
+                PooSpawnRateMultiplier = 1.4f,
+                PooQualityMultiplier = 0.8f,
+                ResourceBonusMultiplier = 1.2f,
+                XPBonusMultiplier = 1.0f,
+                Description = "International poo. +40% rate, +20% income."
             }
         };
     }
@@ -167,5 +191,7 @@ public enum DistrictThemeType
     Market,
     Construction,
     University,
-    Waterfront
+    Waterfront,
+    Hospital,
+    Airport
 }

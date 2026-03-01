@@ -143,6 +143,7 @@ public class TutorialManager : MonoBehaviour
         _active = false;
         _overlay.SetActive(false);
         SaveSystem.MarkTutorialComplete();
+        AnalyticsManager.Instance?.TrackTutorialComplete();
         Debug.Log("[TutorialManager] Tutorial complete!");
 
         // Clean up

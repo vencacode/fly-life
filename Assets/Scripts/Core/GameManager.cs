@@ -43,6 +43,13 @@ public class GameManager : MonoBehaviour
         go.AddComponent<FlySelectionUI>();
         go.AddComponent<GearEquipPopup>();
         go.AddComponent<NotificationManager>();
+        go.AddComponent<SkinSelectPopup>();
+        go.AddComponent<IAPManager>();
+        go.AddComponent<GemShopUI>();
+        go.AddComponent<SeasonalEventManager>();
+        go.AddComponent<LeaderboardManager>();
+        go.AddComponent<LeaderboardUI>();
+        go.AddComponent<AnalyticsManager>();
     }
 
     void Awake()
