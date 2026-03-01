@@ -51,6 +51,18 @@ public static class Constants
     public const int    PROMOTION_COST        = 500;     // PooCoins
     public const float  ELITE_STAT_MULTIPLIER = 1.25f;   // 25% stat boost
 
+    // --- Breeding ---
+    public const int   BREEDING_COST       = 300;    // PooCoins
+    public const float BREEDING_STAT_BONUS = 0.10f;  // +10% on top of best parent stat
+    public const int   BREEDING_MIN_LEVEL  = 5;      // both parents must be level 5+
+
+    // --- Offline Progress ---
+    public const float OFFLINE_COINS_PER_DISTRICT_PER_HOUR = 10f;
+    public const float OFFLINE_MAX_HOURS = 8f;  // cap at 8 hours
+
+    // --- Stat Respec ---
+    public const int RESPEC_COST = 150;  // PooCoins
+
     // --- IAP Product IDs ---
     public const string IAP_GEMS_100  = "com.flylife.gems100";
     public const string IAP_GEMS_500  = "com.flylife.gems500";

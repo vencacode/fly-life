@@ -50,6 +50,17 @@ public class GameManager : MonoBehaviour
         go.AddComponent<LeaderboardManager>();
         go.AddComponent<LeaderboardUI>();
         go.AddComponent<AnalyticsManager>();
+        go.AddComponent<AchievementManager>();
+        go.AddComponent<AchievementPopup>();
+        go.AddComponent<DailyMissionManager>();
+        go.AddComponent<DailyMissionUI>();
+        go.AddComponent<BreedingUI>();
+        go.AddComponent<OfflineRewardPopup>();
+        go.AddComponent<CodexManager>();
+        go.AddComponent<CodexUI>();
+        go.AddComponent<BossRushManager>();
+        go.AddComponent<BossRushUI>();
+        go.AddComponent<RateAppManager>();
     }
 
     void Awake()
@@ -65,6 +76,7 @@ public class GameManager : MonoBehaviour
         yield return null; // wait one frame for all managers' Awake()/Start()
         SaveSystem.Load();
         CheckDailyLoginBonus();
+        CheckOfflineProgress();
         AudioManager.Instance?.PlayMusic(AudioManager.Track.Menu);
 
         // Start tutorial for first-time players (after MainMap loads)
@@ -82,6 +94,28 @@ public class GameManager : MonoBehaviour
         ResourceManager.Instance?.AddGems(5);
         Debug.Log("[GameManager] Daily login bonus: +50 PooCoins, +5 Gems!");
         UIEventBus.Emit(UIEvent.DailyLoginBonus);
+    }
+
+    void CheckOfflineProgress()
+    {
+        long lastTimestamp = SaveSystem.LastSaveTimestamp;
+        if (lastTimestamp <= 0) return;
+
+        long now = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        float secondsAway = Mathf.Max(0, now - lastTimestamp);
+        float hoursAway = secondsAway / 3600f;
+        hoursAway = Mathf.Min(hoursAway, Constants.OFFLINE_MAX_HOURS);
+
+        if (hoursAway < 0.1f) return; // less than 6 minutes — skip
+
+        int districts = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
+        if (districts <= 0) return;
+
+        int coins = Mathf.RoundToInt(districts * Constants.OFFLINE_COINS_PER_DISTRICT_PER_HOUR * hoursAway);
+        if (coins <= 0) return;
+
+        OfflineRewardPopup.Instance?.Show(hoursAway, districts, coins);
+        Debug.Log($"[GameManager] Offline progress: {hoursAway:F1}h away, {districts} districts, +{coins} coins");
     }
 
     void AutoAssignManagers()

@@ -20,6 +20,8 @@ public class InventoryManager : MonoBehaviour
 
     public IReadOnlyList<string> OwnedItemIds => _ownedItemIds;
 
+    public bool HasItem(string itemId) => _ownedItemIds.Contains(itemId);
+
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }
@@ -150,6 +152,7 @@ public class InventoryManager : MonoBehaviour
         _upgradeLevels.TryGetValue(itemId, out int current);
         _upgradeLevels[itemId] = current + 1;
         Debug.Log($"[Inventory] Upgraded {itemId} to +{current + 1}");
+        DailyMissionManager.Instance?.TrackUpgradeGear();
         return true;
     }
 

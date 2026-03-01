@@ -242,6 +242,7 @@ public class ClanManager : MonoBehaviour
             UIEventBus.Emit(UIEvent.LevelUp, fly);
         }
         Debug.Log($"[ClanManager] Trained {fly.Role}: +{Constants.TRAINING_XP} XP (now {fly.XP})");
+        DailyMissionManager.Instance?.TrackTrainFly();
         return true;
     }
 
@@ -265,7 +266,76 @@ public class ClanManager : MonoBehaviour
 
         Debug.Log($"[ClanManager] Fly {flyId} promoted to ELITE! Stats boosted by {(Constants.ELITE_STAT_MULTIPLIER - 1f) * 100}%");
         ToastManager.Instance?.ShowToast($"{fly.Role} promoted to Elite!", ToastType.Success);
+        AchievementManager.Instance?.TrackElitePromoted();
+        DailyMissionManager.Instance?.TrackPromoteFly();
         UIEventBus.Emit(UIEvent.ClanUpdated);
+        return true;
+    }
+
+    // ---- Breeding (Fusion) ----
+
+    public FlyInstance BreedFlies(string flyId1, string flyId2)
+    {
+        var fly1 = _flies.FirstOrDefault(f => f.InstanceId == flyId1);
+        var fly2 = _flies.FirstOrDefault(f => f.InstanceId == flyId2);
+        if (fly1 == null || fly2 == null) return null;
+        if (fly1.Role != fly2.Role) return null;
+        if (fly1.Level < Constants.BREEDING_MIN_LEVEL || fly2.Level < Constants.BREEDING_MIN_LEVEL) return null;
+        if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendPooCoins(Constants.BREEDING_COST))
+            return null;
+
+        // Offspring: best of each stat + bonus
+        var offspring = CreateFly(fly1.Role);
+        offspring.Level = Mathf.Max(fly1.Level, fly2.Level);
+        offspring.XP = offspring.Level * 100;
+        offspring.Attack    = Mathf.RoundToInt(Mathf.Max(fly1.Attack, fly2.Attack) * (1f + Constants.BREEDING_STAT_BONUS));
+        offspring.Defense   = Mathf.RoundToInt(Mathf.Max(fly1.Defense, fly2.Defense) * (1f + Constants.BREEDING_STAT_BONUS));
+        offspring.Speed     = Mathf.RoundToInt(Mathf.Max(fly1.Speed, fly2.Speed) * (1f + Constants.BREEDING_STAT_BONUS));
+        offspring.MaxHealth = Mathf.RoundToInt(Mathf.Max(fly1.MaxHealth, fly2.MaxHealth) * (1f + Constants.BREEDING_STAT_BONUS));
+        offspring.CurrentHealth = offspring.MaxHealth;
+
+        // Transfer elite status if either parent was elite
+        offspring.IsElite = fly1.IsElite || fly2.IsElite;
+
+        // Remove parents, add offspring
+        _flies.Remove(fly1);
+        _flies.Remove(fly2);
+        _flies.Add(offspring);
+
+        UIEventBus.Emit(UIEvent.FlyBred, offspring);
+        UIEventBus.Emit(UIEvent.ClanUpdated);
+        ToastManager.Instance?.ShowToast(
+            $"New {offspring.Role} bred! ATK:{offspring.Attack} DEF:{offspring.Defense}",
+            ToastType.Success);
+        Debug.Log($"[ClanManager] Bred {fly1.InstanceId} + {fly2.InstanceId} → {offspring.InstanceId}");
+        return offspring;
+    }
+
+    // ---- Stat Respec ----
+
+    public bool RespecFly(string flyId)
+    {
+        var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
+        if (fly == null) return false;
+        if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendPooCoins(Constants.RESPEC_COST))
+            return false;
+
+        var data = GetRoleData(fly.Role);
+        float levelMult = 1f + (fly.Level - 1) * 0.1f;
+        float eliteMult = fly.IsElite ? Constants.ELITE_STAT_MULTIPLIER : 1f;
+        float variance = 0.2f; // ±20%
+
+        fly.Attack    = Mathf.RoundToInt(data.BaseAttack  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+        fly.Defense   = Mathf.RoundToInt(data.BaseDefense * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+        fly.Speed     = Mathf.RoundToInt(data.BaseSpeed   * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+        fly.MaxHealth = Mathf.RoundToInt(data.BaseHealth  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+        fly.CurrentHealth = fly.MaxHealth;
+
+        UIEventBus.Emit(UIEvent.ClanUpdated);
+        ToastManager.Instance?.ShowToast(
+            $"Stats rerolled! ATK:{fly.Attack} DEF:{fly.Defense} SPD:{fly.Speed}",
+            ToastType.Info);
+        Debug.Log($"[ClanManager] Respec fly {flyId}: ATK={fly.Attack} DEF={fly.Defense} SPD={fly.Speed} HP={fly.MaxHealth}");
         return true;
     }
 

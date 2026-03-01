@@ -48,6 +48,8 @@ public class ResourceManager : MonoBehaviour
         if (PooCoins < amount) return false;
         PooCoins -= amount;
         UIEventBus.EmitResourceChanged("PooCoins", PooCoins);
+        AchievementManager.Instance?.TrackCoinsSpent(amount);
+        DailyMissionManager.Instance?.TrackSpendCoins(amount);
         return true;
     }
 
@@ -60,6 +62,7 @@ public class ResourceManager : MonoBehaviour
     {
         Gems += amount;
         UIEventBus.EmitResourceChanged("Gems", Gems);
+        AchievementManager.Instance?.TrackGemsEarned(amount);
     }
     public bool SpendGems(int amount)
     {

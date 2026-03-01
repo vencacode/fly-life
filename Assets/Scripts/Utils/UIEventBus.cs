@@ -57,5 +57,12 @@ public enum UIEvent
     DailyLoginBonus,
     SeasonalEventStarted,
     SeasonalEventEnded,
-    LeaderboardUpdated
+    LeaderboardUpdated,
+    AchievementUnlocked,
+    MissionUpdated,
+    MissionCompleted,
+    FlyBred,
+    CodexUpdated,
+    BossRushStarted,
+    BossRushEnded
 }

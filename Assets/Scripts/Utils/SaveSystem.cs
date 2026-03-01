@@ -17,6 +17,9 @@ public static class SaveSystem
     /// <summary>Whether the tutorial has been completed.</summary>
     public static bool TutorialComplete { get; set; }
 
+    /// <summary>Unix timestamp of last save (for offline progress calculation).</summary>
+    public static long LastSaveTimestamp { get; set; }
+
     // JsonUtility can't serialize Dictionary — use a list of key-value pairs instead
     [System.Serializable]
     class StringPair
@@ -32,9 +35,15 @@ public static class SaveSystem
         public ResourceManager.SaveData     Resources;
         public InventoryManager.SaveData    Inventory;
         public SkinSelectPopup.SaveData     Skins;
+        public AchievementManager.SaveData  Achievements;
+        public DailyMissionManager.SaveData DailyMissions;
+        public CodexManager.SaveData        Codex;
+        public BossRushManager.SaveData     BossRush;
+        public RateAppManager.SaveData      RateApp;
         public List<StringPair>             TerritoryOwners;
         public string                       LastLoginDate;
         public bool                         TutorialComplete;
+        public long                         LastSaveTimestamp;
         // PooManager poos are not saved — they respawn fresh each session
         public string Version = "1.0";
     }
@@ -57,9 +66,15 @@ public static class SaveSystem
             Resources        = ResourceManager.Instance?.GetSaveData(),
             Inventory        = InventoryManager.Instance?.GetSaveData(),
             Skins            = SkinSelectPopup.Instance?.GetSaveData(),
+            Achievements     = AchievementManager.Instance?.GetSaveData(),
+            DailyMissions    = DailyMissionManager.Instance?.GetSaveData(),
+            Codex            = CodexManager.Instance?.GetSaveData(),
+            BossRush         = BossRushManager.Instance?.GetSaveData(),
+            RateApp          = RateAppManager.Instance?.GetSaveData(),
             TerritoryOwners  = territoryList,
             LastLoginDate    = LastLoginDate,
-            TutorialComplete = TutorialComplete
+            TutorialComplete = TutorialComplete,
+            LastSaveTimestamp = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
         string json = JsonUtility.ToJson(file, prettyPrint: true);
         File.WriteAllText(SavePath, json);
@@ -83,8 +98,14 @@ public static class SaveSystem
         ResourceManager.Instance?.LoadSaveData(file.Resources);
         InventoryManager.Instance?.LoadSaveData(file.Inventory);
         SkinSelectPopup.Instance?.LoadSaveData(file.Skins);
-        LastLoginDate    = file.LastLoginDate;
-        TutorialComplete = file.TutorialComplete;
+        AchievementManager.Instance?.LoadSaveData(file.Achievements);
+        DailyMissionManager.Instance?.LoadSaveData(file.DailyMissions);
+        CodexManager.Instance?.LoadSaveData(file.Codex);
+        BossRushManager.Instance?.LoadSaveData(file.BossRush);
+        RateAppManager.Instance?.LoadSaveData(file.RateApp);
+        LastLoginDate      = file.LastLoginDate;
+        TutorialComplete   = file.TutorialComplete;
+        LastSaveTimestamp   = file.LastSaveTimestamp;
 
         // Convert serializable list back to dictionary for TerritoryManager
         if (file.TerritoryOwners != null)

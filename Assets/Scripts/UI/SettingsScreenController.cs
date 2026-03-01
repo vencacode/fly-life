@@ -59,6 +59,30 @@ public class SettingsScreenController : MonoBehaviour
             new Color(0.4f, 0.35f, 0.15f, 0.85f), 30);
         lbBtn.onClick.AddListener(() => LeaderboardUI.Instance?.Toggle());
 
+        // ── Achievement button (top-right, next to leaderboard) ──
+        var achBtn = CreateButton(canvasGo.transform, "AchievementButton", "\u2605",
+            new Vector2(0.60f, 0.94f), new Vector2(0.68f, 0.98f),
+            new Color(0.5f, 0.4f, 0.1f, 0.85f), 30);
+        achBtn.onClick.AddListener(() => AchievementPopup.Instance?.Toggle());
+
+        // ── Daily Missions button (top-right, next to achievements) ──
+        var missionBtn = CreateButton(canvasGo.transform, "MissionButton", "\u2261",
+            new Vector2(0.50f, 0.94f), new Vector2(0.58f, 0.98f),
+            new Color(0.15f, 0.4f, 0.45f, 0.85f), 30);
+        missionBtn.onClick.AddListener(() => DailyMissionUI.Instance?.Toggle());
+
+        // ── Codex button (top-right, next to missions) ──
+        var codexBtn = CreateButton(canvasGo.transform, "CodexButton", "\u2637",
+            new Vector2(0.40f, 0.94f), new Vector2(0.48f, 0.98f),
+            new Color(0.3f, 0.25f, 0.45f, 0.85f), 30);
+        codexBtn.onClick.AddListener(() => CodexUI.Instance?.Toggle());
+
+        // ── Boss Rush button (top-right, next to codex) ──
+        var rushBtn = CreateButton(canvasGo.transform, "BossRushButton", "\u2694",
+            new Vector2(0.30f, 0.94f), new Vector2(0.38f, 0.98f),
+            new Color(0.5f, 0.15f, 0.1f, 0.85f), 30);
+        rushBtn.onClick.AddListener(() => BossRushUI.Instance?.Toggle());
+
         // ── Main settings panel (hidden by default) ──
         _panel = new GameObject("SettingsPanel");
         _panel.transform.SetParent(canvasGo.transform, false);

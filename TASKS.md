@@ -3909,6 +3909,509 @@ go.AddComponent<AnalyticsManager>();
 
 ---
 
+## PHASE 8 — Long-term Retention & Social
+
+### TASK 43 — Achievement System
+
+**Goal:** Track player milestones and award gems/skins as rewards. Achievements persist in save data.
+
+**New files:**
+- `Assets/Scripts/Data/AchievementRegistry.cs` — static registry of all achievements
+- `Assets/Scripts/Managers/AchievementManager.cs` — tracks progress, unlocks, awards
+- `Assets/Scripts/UI/AchievementPopup.cs` — runtime-built achievement list overlay
+
+**Steps:**
+
+1. Create `Assets/Scripts/Data/AchievementRegistry.cs`:
+```csharp
+using System.Collections.Generic;
+
+public static class AchievementRegistry
+{
+    public enum AchievementCategory { Combat, Territory, Clan, Economy, Collection }
+
+    public struct AchievementDef
+    {
+        public string Id;
+        public string DisplayName;
+        public string Description;
+        public AchievementCategory Category;
+        public int Target;           // e.g. win 10 battles
+        public int GemReward;
+        public string SkinReward;    // null if none
+    }
+
+    static readonly Dictionary<string, AchievementDef> _achievements = new()
+    {
+        ["first_blood"] = new() { Id = "first_blood", DisplayName = "First Blood",
+            Description = "Win your first battle.", Category = AchievementCategory.Combat,
+            Target = 1, GemReward = 10 },
+        ["battle_veteran"] = new() { Id = "battle_veteran", DisplayName = "Battle Veteran",
+            Description = "Win 25 battles.", Category = AchievementCategory.Combat,
+            Target = 25, GemReward = 50 },
+        ["warlord"] = new() { Id = "warlord", DisplayName = "Warlord",
+            Description = "Win 100 battles.", Category = AchievementCategory.Combat,
+            Target = 100, GemReward = 100, SkinReward = "crimson" },
+        ["landlord"] = new() { Id = "landlord", DisplayName = "Landlord",
+            Description = "Own 5 districts.", Category = AchievementCategory.Territory,
+            Target = 5, GemReward = 25 },
+        ["empire_builder"] = new() { Id = "empire_builder", DisplayName = "Empire Builder",
+            Description = "Own 15 districts.", Category = AchievementCategory.Territory,
+            Target = 15, GemReward = 75 },
+        ["world_domination"] = new() { Id = "world_domination", DisplayName = "World Domination",
+            Description = "Own all 49 districts.", Category = AchievementCategory.Territory,
+            Target = 49, GemReward = 200, SkinReward = "royal" },
+        ["swarm_leader"] = new() { Id = "swarm_leader", DisplayName = "Swarm Leader",
+            Description = "Have 20 flies in your clan.", Category = AchievementCategory.Clan,
+            Target = 20, GemReward = 30 },
+        ["elite_force"] = new() { Id = "elite_force", DisplayName = "Elite Force",
+            Description = "Promote 5 flies to Elite.", Category = AchievementCategory.Clan,
+            Target = 5, GemReward = 60 },
+        ["big_spender"] = new() { Id = "big_spender", DisplayName = "Big Spender",
+            Description = "Spend 5000 PooCoins total.", Category = AchievementCategory.Economy,
+            Target = 5000, GemReward = 40 },
+        ["gem_collector"] = new() { Id = "gem_collector", DisplayName = "Gem Collector",
+            Description = "Accumulate 500 gems (lifetime).", Category = AchievementCategory.Economy,
+            Target = 500, GemReward = 50 },
+        ["fashionista"] = new() { Id = "fashionista", DisplayName = "Fashionista",
+            Description = "Unlock 5 fly skins.", Category = AchievementCategory.Collection,
+            Target = 5, GemReward = 35 },
+        ["legendary_hunter"] = new() { Id = "legendary_hunter", DisplayName = "Legendary Hunter",
+            Description = "Own 3 legendary items.", Category = AchievementCategory.Collection,
+            Target = 3, GemReward = 80, SkinReward = "golden" },
+        ["clan_level_10"] = new() { Id = "clan_level_10", DisplayName = "Rising Power",
+            Description = "Reach clan level 10.", Category = AchievementCategory.Clan,
+            Target = 10, GemReward = 50 },
+        ["boss_slayer"] = new() { Id = "boss_slayer", DisplayName = "Boss Slayer",
+            Description = "Defeat 5 boss districts.", Category = AchievementCategory.Combat,
+            Target = 5, GemReward = 60 },
+    };
+
+    public static AchievementDef? Get(string id)
+        => _achievements.TryGetValue(id, out var def) ? def : null;
+    public static IReadOnlyDictionary<string, AchievementDef> All => _achievements;
+}
+```
+
+2. Create `Assets/Scripts/Managers/AchievementManager.cs`:
+- Singleton with `Instance`, add to `GameManager.AutoBootstrap`
+- Tracks counters: `BattlesWon`, `DistrictsOwned`, `TotalFlies`, `EliteCount`, `CoinsSpent`, `GemsEarned`, `SkinsUnlocked`, `LegendaryOwned`, `ClanLevel`, `BossesDefeated`
+- `Dictionary<string, bool> _unlocked` for completed achievements
+- Subscribe to UIEvents: `BattleEnded`, `DistrictCaptured`, `LevelUp`, `ClanUpdated`
+- `CheckAll()` method iterates all achievements, compares counter to target, awards if newly unlocked
+- Awards: `ResourceManager.AddGems()`, `SkinSelectPopup.UnlockSkin()`, `ToastManager.ShowToast()`
+- `SaveData` class with counters + unlocked list, wired into `SaveSystem`
+- `GetProgress(string achievementId)` returns 0.0–1.0 float for UI
+
+3. Create `Assets/Scripts/UI/AchievementPopup.cs`:
+- Runtime-built overlay (sortingOrder = 880)
+- Scrollable list grouped by category
+- Each row: icon area, name, description, progress bar, gem reward, check mark if complete
+- Green tint for completed rows, gray for locked
+- Add button to SettingsScreenController HUD: `★` at (0.60, 0.94)–(0.68, 0.98)
+
+4. Wire into SaveSystem: add `AchievementManager.SaveData` to `SaveFile`, save/load calls.
+5. Refresh → zero errors.
+
+---
+
+### TASK 44 — Daily Missions
+
+**Goal:** 3 rotating daily objectives that reward PooCoins and gems when completed.
+
+**New files:**
+- `Assets/Scripts/Data/MissionRegistry.cs` — pool of possible missions
+- `Assets/Scripts/Managers/DailyMissionManager.cs` — picks 3 daily, tracks progress
+- `Assets/Scripts/UI/DailyMissionUI.cs` — runtime-built mission panel
+
+**Steps:**
+
+1. Create `Assets/Scripts/Data/MissionRegistry.cs`:
+```csharp
+using System.Collections.Generic;
+
+public static class MissionRegistry
+{
+    public enum MissionType { WinBattles, CaptureDistricts, TrainFlies, SpendCoins, CollectPoo, HatchEggs, UpgradeGear, PromoteFly }
+
+    public struct MissionDef
+    {
+        public string Id;
+        public string DisplayTemplate; // e.g. "Win {0} battles"
+        public MissionType Type;
+        public int MinTarget, MaxTarget;
+        public int CoinReward;
+        public int GemReward;
+    }
+
+    static readonly List<MissionDef> _pool = new()
+    {
+        new() { Id = "win_battles", DisplayTemplate = "Win {0} battles", Type = MissionType.WinBattles,
+            MinTarget = 1, MaxTarget = 5, CoinReward = 100, GemReward = 5 },
+        new() { Id = "capture_districts", DisplayTemplate = "Capture {0} districts", Type = MissionType.CaptureDistricts,
+            MinTarget = 1, MaxTarget = 3, CoinReward = 150, GemReward = 10 },
+        new() { Id = "train_flies", DisplayTemplate = "Train {0} flies", Type = MissionType.TrainFlies,
+            MinTarget = 2, MaxTarget = 5, CoinReward = 80, GemReward = 3 },
+        new() { Id = "spend_coins", DisplayTemplate = "Spend {0} PooCoins", Type = MissionType.SpendCoins,
+            MinTarget = 200, MaxTarget = 500, CoinReward = 120, GemReward = 5 },
+        new() { Id = "collect_poo", DisplayTemplate = "Discover {0} poos", Type = MissionType.CollectPoo,
+            MinTarget = 3, MaxTarget = 8, CoinReward = 60, GemReward = 3 },
+        new() { Id = "hatch_eggs", DisplayTemplate = "Hatch {0} egg batches", Type = MissionType.HatchEggs,
+            MinTarget = 1, MaxTarget = 3, CoinReward = 90, GemReward = 5 },
+        new() { Id = "upgrade_gear", DisplayTemplate = "Upgrade gear {0} times", Type = MissionType.UpgradeGear,
+            MinTarget = 1, MaxTarget = 3, CoinReward = 100, GemReward = 5 },
+        new() { Id = "promote_fly", DisplayTemplate = "Promote {0} fly to Elite", Type = MissionType.PromoteFly,
+            MinTarget = 1, MaxTarget = 1, CoinReward = 200, GemReward = 15 },
+    };
+
+    public static IReadOnlyList<MissionDef> Pool => _pool;
+}
+```
+
+2. Create `Assets/Scripts/Managers/DailyMissionManager.cs`:
+- Singleton, added to AutoBootstrap
+- On Start: check if `_lastRefreshDate != today` → pick 3 random missions from pool with random targets
+- `ActiveMission` struct: MissionDef ref, target, progress, claimed bool
+- Subscribe to UIEvents to increment progress (BattleEnded → WinBattles, DistrictCaptured → CaptureDistricts, etc.)
+- `ClaimReward(int index)` grants coins/gems if progress >= target and not yet claimed
+- `SaveData` with active missions, progress, lastRefreshDate
+- Emits new UIEvent: `MissionUpdated`, `MissionCompleted`
+
+3. Create `Assets/Scripts/UI/DailyMissionUI.cs`:
+- Runtime-built panel (sortingOrder = 875)
+- Shows 3 mission cards with progress bar, description, reward, Claim button
+- Claim button green when complete, gray when claimed
+- Timer showing hours until reset
+- Add 📋 button to SettingsScreenController HUD
+
+4. Add `MissionUpdated`, `MissionCompleted` to UIEvent enum.
+5. Wire SaveData into SaveSystem.
+6. Refresh → zero errors.
+
+---
+
+### TASK 45 — Fly Breeding (Fusion)
+
+**Goal:** Combine 2 flies of the same role into 1 stronger fly. Costs PooCoins. The new fly inherits the better stats from each parent plus a bonus.
+
+**New files:**
+- `Assets/Scripts/UI/BreedingUI.cs` — runtime-built breeding popup
+
+**Modify:**
+- `ClanManager.cs` — add `BreedFlies(string flyId1, string flyId2)` method
+- `Constants.cs` — add breeding constants
+
+**Steps:**
+
+1. Add constants to `Constants.cs`:
+```csharp
+public const int   BREEDING_COST       = 300;    // PooCoins
+public const float BREEDING_STAT_BONUS = 0.10f;  // +10% on top of best parent stat
+public const int   BREEDING_MIN_LEVEL  = 5;      // both parents must be level 5+
+```
+
+2. Add `BreedFlies()` to `ClanManager.cs`:
+```csharp
+public FlyInstance BreedFlies(string flyId1, string flyId2)
+{
+    var fly1 = _flies.FirstOrDefault(f => f.InstanceId == flyId1);
+    var fly2 = _flies.FirstOrDefault(f => f.InstanceId == flyId2);
+    if (fly1 == null || fly2 == null) return null;
+    if (fly1.Role != fly2.Role) return null;
+    if (fly1.Level < Constants.BREEDING_MIN_LEVEL || fly2.Level < Constants.BREEDING_MIN_LEVEL) return null;
+    if (!ResourceManager.Instance.SpendPooCoins(Constants.BREEDING_COST)) return null;
+
+    // Offspring: best of each stat + bonus
+    var offspring = CreateFly(fly1.Role);
+    offspring.Level = Mathf.Max(fly1.Level, fly2.Level);
+    offspring.XP = offspring.Level * 100; // set XP to match level
+    offspring.Attack = Mathf.RoundToInt(Mathf.Max(fly1.Attack, fly2.Attack) * (1f + Constants.BREEDING_STAT_BONUS));
+    offspring.Defense = Mathf.RoundToInt(Mathf.Max(fly1.Defense, fly2.Defense) * (1f + Constants.BREEDING_STAT_BONUS));
+    offspring.Speed = Mathf.RoundToInt(Mathf.Max(fly1.Speed, fly2.Speed) * (1f + Constants.BREEDING_STAT_BONUS));
+    offspring.MaxHealth = Mathf.RoundToInt(Mathf.Max(fly1.MaxHealth, fly2.MaxHealth) * (1f + Constants.BREEDING_STAT_BONUS));
+    offspring.CurrentHealth = offspring.MaxHealth;
+
+    // Remove parents, add offspring
+    _flies.Remove(fly1);
+    _flies.Remove(fly2);
+    _flies.Add(offspring);
+
+    UIEventBus.Emit(UIEvent.ClanUpdated);
+    ToastManager.Instance?.ShowToast($"New {offspring.Role} bred! ATK:{offspring.Attack} DEF:{offspring.Defense}", ToastType.Success);
+    return offspring;
+}
+```
+
+3. Create `Assets/Scripts/UI/BreedingUI.cs`:
+- Runtime-built popup (sortingOrder = 835)
+- Two fly selection slots (tap to pick from eligible flies)
+- Preview panel showing offspring stats
+- "Breed" button with cost display
+- Filter: only same-role, level 5+ flies shown
+- Add "Breed" button to ClanScreenController bottom bar
+
+4. Add `FlyBred` to UIEvent enum.
+5. Refresh → zero errors.
+
+---
+
+### TASK 46 — Offline Progress
+
+**Goal:** When the player returns after being away, calculate and award PooCoins earned passively from owned districts while offline.
+
+**New files:**
+- `Assets/Scripts/UI/OfflineRewardPopup.cs` — shows "Welcome back!" with earned resources
+
+**Modify:**
+- `SaveSystem.cs` — store `LastSaveTimestamp`
+- `GameManager.cs` — calculate offline earnings on load
+
+**Steps:**
+
+1. Add to `Constants.cs`:
+```csharp
+public const float OFFLINE_COINS_PER_DISTRICT_PER_HOUR = 10f;
+public const float OFFLINE_MAX_HOURS = 8f;  // cap at 8 hours
+```
+
+2. Add `LastSaveTimestamp` (long, Unix epoch) to `SaveFile` in `SaveSystem.cs`. Set on Save, read on Load.
+
+3. In `GameManager.Start()`, after `SaveSystem.Load()`:
+- Calculate seconds elapsed since `LastSaveTimestamp`
+- Cap at `OFFLINE_MAX_HOURS * 3600`
+- Compute coins: `districts * OFFLINE_COINS_PER_DISTRICT_PER_HOUR * hours`
+- If coins > 0, show `OfflineRewardPopup` and grant coins
+
+4. Create `Assets/Scripts/UI/OfflineRewardPopup.cs`:
+- Runtime-built centered panel (sortingOrder = 900)
+- "Welcome back!" title
+- Shows time away, districts owned, coins earned
+- "Collect" button grants coins and closes
+- "Watch Ad for 2×" button doubles the reward (calls AdManager)
+- Auto-dismiss after 10 seconds if not interacted
+
+5. Refresh → zero errors.
+
+---
+
+### TASK 47 — Collection Codex
+
+**Goal:** A screen that tracks all flies owned, gear collected, skins unlocked, and districts captured — ever. Shows completion %.
+
+**New files:**
+- `Assets/Scripts/Managers/CodexManager.cs` — tracks lifetime collections
+- `Assets/Scripts/UI/CodexUI.cs` — runtime-built codex overlay
+
+**Steps:**
+
+1. Create `Assets/Scripts/Managers/CodexManager.cs`:
+- Singleton, added to AutoBootstrap
+- `HashSet<string>` for: `DiscoveredGear`, `DiscoveredSkins`, `CapturedDistricts`, `ReachedFlyRoles`
+- Subscribes to UIEvents: `BattleItemDropped/Grabbed`, `DistrictCaptured`, `ClanUpdated`
+- Auto-discovers on event fire
+- `GetCompletionPercent()` = total discovered / total possible
+- `SaveData` class wired into SaveSystem
+
+2. Create `Assets/Scripts/UI/CodexUI.cs`:
+- Runtime-built overlay (sortingOrder = 885)
+- Tabs: Gear, Skins, Districts, Flies
+- Each tab: scrollable grid of items
+- Discovered items: colored with name. Undiscovered: gray silhouette with "???"
+- Overall completion % at the top
+- Add 📖 button to SettingsScreenController HUD
+
+3. Wire SaveData into SaveSystem.
+4. Add `CodexUpdated` to UIEvent enum.
+5. Refresh → zero errors.
+
+---
+
+### TASK 48 — Boss Rush Mode
+
+**Goal:** A special mode where the player fights all boss districts back-to-back for bonus rewards. Unlocked after beating 3+ boss districts.
+
+**New files:**
+- `Assets/Scripts/Managers/BossRushManager.cs` — manages boss rush flow
+- `Assets/Scripts/UI/BossRushUI.cs` — entry UI and progress display
+
+**Steps:**
+
+1. Create `Assets/Scripts/Managers/BossRushManager.cs`:
+- Singleton, added to AutoBootstrap
+- `IsUnlocked` — true if player has beaten 3+ boss districts
+- `StartBossRush()` — queues all captured boss districts as sequential battles
+- After each win: bonus coins + chance for legendary drop
+- If player loses: rush ends, rewards earned so far are kept
+- `CurrentRound`, `TotalRounds`, `BonusCoinsEarned`
+- Listens to `BattleEnded` to advance to next round
+
+2. Create `Assets/Scripts/UI/BossRushUI.cs`:
+- Runtime-built overlay (sortingOrder = 890)
+- Shows unlock status, best streak, total bosses
+- "Start Boss Rush" button
+- During rush: progress bar (Round X/Y), accumulated rewards
+- End screen: total rewards summary with "Collect" button
+- Add 🏆 button to SettingsScreenController HUD (visible only when unlocked)
+
+3. Add `BossRushStarted`, `BossRushEnded` to UIEvent enum.
+4. Refresh → zero errors.
+
+---
+
+### TASK 49 — Stat Respec
+
+**Goal:** Spend PooCoins to re-randomize a fly's base stats. Keeps level, XP, and equipment but rolls new ATK/DEF/SPD/HP.
+
+**Modify:**
+- `ClanManager.cs` — add `RespecFly(string flyId)` method
+- `Constants.cs` — add respec cost
+- `ClanScreenController.cs` — add Respec button to fly cards
+
+**Steps:**
+
+1. Add to `Constants.cs`:
+```csharp
+public const int RESPEC_COST = 150;  // PooCoins
+```
+
+2. Add `RespecFly()` to `ClanManager.cs`:
+```csharp
+public bool RespecFly(string flyId)
+{
+    var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
+    if (fly == null) return false;
+    if (!ResourceManager.Instance.SpendPooCoins(Constants.RESPEC_COST)) return false;
+
+    var data = GetRoleData(fly.Role);
+    float levelMult = 1f + (fly.Level - 1) * 0.1f;
+    float eliteMult = fly.IsElite ? Constants.ELITE_STAT_MULTIPLIER : 1f;
+    float variance = 0.2f; // ±20% randomization
+
+    fly.Attack    = Mathf.RoundToInt(data.BaseAttack  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+    fly.Defense   = Mathf.RoundToInt(data.BaseDefense * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+    fly.Speed     = Mathf.RoundToInt(data.BaseSpeed   * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+    fly.MaxHealth = Mathf.RoundToInt(data.BaseHealth  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
+    fly.CurrentHealth = fly.MaxHealth;
+
+    UIEventBus.Emit(UIEvent.ClanUpdated);
+    ToastManager.Instance?.ShowToast($"Stats rerolled! ATK:{fly.Attack} DEF:{fly.Defense} SPD:{fly.Speed}", ToastType.Info);
+    return true;
+}
+```
+
+3. In `ClanScreenController.cs`, add a "Respec" button (🎲) on fly cards next to Train button. Calls `ClanManager.Instance.RespecFly(flyId)` then refreshes.
+
+4. Refresh → zero errors.
+
+---
+
+### TASK 50 — Rate App Prompt
+
+**Goal:** Show a "Rate this app" prompt after key milestones (5 battles won, first boss kill, clan level 5). Only shows once per milestone. Uses Unity's `Application.RequestStoreReview()` via reflection.
+
+**New files:**
+- `Assets/Scripts/Managers/RateAppManager.cs` — tracks milestones and triggers prompt
+
+**Steps:**
+
+1. Create `Assets/Scripts/Managers/RateAppManager.cs`:
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+public class RateAppManager : MonoBehaviour
+{
+    public static RateAppManager Instance { get; private set; }
+
+    HashSet<string> _shownPrompts = new();
+    bool _hasRated;
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
+        Instance = this;
+    }
+
+    void Start()
+    {
+        UIEventBus.On(UIEvent.BattleEnded, OnBattleEnded);
+        UIEventBus.On(UIEvent.LevelUp, OnLevelUp);
+    }
+
+    void OnDisable()
+    {
+        UIEventBus.Off(UIEvent.BattleEnded, OnBattleEnded);
+        UIEventBus.Off(UIEvent.LevelUp, OnLevelUp);
+    }
+
+    void OnBattleEnded(object data)
+    {
+        if (_hasRated) return;
+        bool won = data is bool b && b;
+        if (!won) return;
+        int winsNeeded = AchievementManager.Instance?.GetCounter("battles_won") ?? 0;
+        if (winsNeeded >= 5) TryShow("5_wins");
+        if (winsNeeded >= 1)
+        {
+            // Check if boss kill
+            var district = TerritoryManager.Instance?.GetDistrict(BattleManager.Instance?.PendingDistrictId);
+            if (district?.IsBoss == true) TryShow("first_boss");
+        }
+    }
+
+    void OnLevelUp(object data)
+    {
+        if (_hasRated) return;
+        int level = ClanManager.Instance?.ClanLevel ?? 0;
+        if (level >= 5) TryShow("clan_level_5");
+    }
+
+    void TryShow(string milestoneId)
+    {
+        if (_hasRated || _shownPrompts.Contains(milestoneId)) return;
+        _shownPrompts.Add(milestoneId);
+        ShowRatePrompt();
+    }
+
+    void ShowRatePrompt()
+    {
+        // Build a simple popup asking to rate
+        // ... (runtime-built UI with Yes/No/Later)
+        // On Yes: call RequestStoreReview() via reflection, set _hasRated = true
+        // On No: set _hasRated = true
+        // On Later: do nothing (will prompt at next milestone)
+    }
+
+    void RequestStoreReview()
+    {
+#if UNITY_IOS || UNITY_ANDROID
+        try
+        {
+            var reviewType = System.Type.GetType("UnityEngine.iOS.Device, UnityEngine.CoreModule");
+            reviewType?.GetMethod("RequestStoreReview")?.Invoke(null, null);
+        }
+        catch { /* fallback: open store URL */ }
+#endif
+    }
+
+    // Save/Load: _shownPrompts, _hasRated
+    [System.Serializable]
+    public class SaveData
+    {
+        public List<string> ShownPrompts = new();
+        public bool HasRated;
+    }
+    public SaveData GetSaveData() => new() { ShownPrompts = new(_shownPrompts), HasRated = _hasRated };
+    public void LoadSaveData(SaveData data) { if (data == null) return; _shownPrompts = new(data.ShownPrompts); _hasRated = data.HasRated; }
+}
+```
+
+2. Add to `GameManager.AutoBootstrap`.
+3. Wire SaveData into SaveSystem.
+4. Refresh → zero errors.
+
+---
+
 ## Notes for Claude Code
 
 - Always run `.\unity-cmd.ps1 '{"type": "refresh"}' -Timeout 120` after editing any .cs file

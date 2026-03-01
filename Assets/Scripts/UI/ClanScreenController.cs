@@ -112,6 +112,17 @@ public class ClanScreenController : MonoBehaviour
         backRect.anchorMin = new Vector2(0, 0);
         backRect.anchorMax = new Vector2(0.3f, 0.05f);
         backRect.sizeDelta = Vector2.zero;
+
+        // Breed button
+        var breedBtn = CreateButton(canvasGo.transform, "BreedButton", "Breed Flies", () =>
+        {
+            BreedingUI.Instance?.Toggle();
+        });
+        var breedRect = breedBtn.GetComponent<RectTransform>();
+        breedRect.anchorMin = new Vector2(0.35f, 0);
+        breedRect.anchorMax = new Vector2(0.65f, 0.05f);
+        breedRect.sizeDelta = Vector2.zero;
+        breedBtn.GetComponent<Image>().color = new Color(0.45f, 0.25f, 0.5f);
     }
 
     public void RefreshFlyList()
@@ -227,6 +238,19 @@ public class ClanScreenController : MonoBehaviour
             promoteRect.sizeDelta = Vector2.zero;
             promoteBtn.GetComponent<Image>().color = new Color(0.6f, 0.5f, 0.1f);
         }
+
+        // Respec button
+        var respecBtn = CreateButton(card.transform, "RespecBtn",
+            $"Respec ({Constants.RESPEC_COST})", () =>
+        {
+            if (ClanManager.Instance?.RespecFly(flyRef.InstanceId) == true)
+                RefreshFlyList();
+        });
+        var respecRect = respecBtn.GetComponent<RectTransform>();
+        respecRect.anchorMin = new Vector2(0.77f, 0.02f);
+        respecRect.anchorMax = new Vector2(0.98f, 0.28f);
+        respecRect.sizeDelta = Vector2.zero;
+        respecBtn.GetComponent<Image>().color = new Color(0.35f, 0.3f, 0.5f);
 
         // Reassign role buttons
         float btnX = 0.62f;
