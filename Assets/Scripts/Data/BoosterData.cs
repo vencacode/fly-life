@@ -19,8 +19,7 @@ public class BoosterData : ScriptableObject
     public int AdCooldownSec   = 600;   // 10 min between uses via ad
 
     [Header("Unlock")]
-    public int PooResourceCost  = 0;
-    public int TrashResourceCost = 0;
+    public int PooCoinCost = 0;
 }
 
 [System.Serializable]

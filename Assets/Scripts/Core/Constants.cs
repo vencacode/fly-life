@@ -30,6 +30,11 @@ public static class Constants
     public const int    XP_PER_BATTLE_WIN       = 50;
     public const int    XP_PER_BATTLE_LOSS      = 10;
 
+    // --- Training & Upgrades ---
+    public const int    TRAINING_COST           = 50;      // PooCoins to train a fly
+    public const int    TRAINING_XP             = 30;      // XP granted per training
+    public const int    GEAR_UPGRADE_COST       = 100;     // PooCoins to upgrade gear +1
+
     // --- Economy ---
     public const int    STARTING_GEMS           = 50;
     public const int    STARTING_CLAN_COINS     = 100;
@@ -43,7 +48,7 @@ public static class Constants
 
     // --- Scene names ---
     public const string SCENE_MENU             = "MainMenu";
-    public const string SCENE_CITY             = "CityMap";
+    public const string SCENE_CITY             = "MainMap";
     public const string SCENE_BATTLE           = "Battle";
     public const string SCENE_CLAN             = "ClanScreen";
 }

@@ -11,7 +11,7 @@ public class AudioManager : MonoBehaviour
 
     public enum Track { Menu, CityMap, Battle }
     public enum SFX   { ButtonClick, PooFound, EggLaid, EggHatched, BattleHit, BattleWin, BattleLoss,
-                        DistrictCaptured, DistrictLost, BoosterActivated, CoinCollected }
+                        DistrictCaptured, DistrictLost, BoosterActivated, CoinCollected, LevelUp }
 
     [Header("Music")]
     public AudioClip MusicMenu;
@@ -34,7 +34,32 @@ public class AudioManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+
+        // Restore saved volume preferences
+        MusicVolume = PlayerPrefs.GetFloat("MusicVolume", MusicVolume);
+        SfxVolume   = PlayerPrefs.GetFloat("SFXVolume",   SfxVolume);
+
         BuildPool();
+        SubscribeEvents();
+    }
+
+    void OnDestroy() => UnsubscribeEvents();
+
+    void SubscribeEvents()
+    {
+        UIEventBus.On(UIEvent.BattleAttack,      _ => PlaySFX(SFX.BattleHit));
+        UIEventBus.On(UIEvent.BattleEnded,        d => PlaySFX((bool)d ? SFX.BattleWin : SFX.BattleLoss));
+        UIEventBus.On(UIEvent.DistrictCaptured,   _ => PlaySFX(SFX.DistrictCaptured));
+        UIEventBus.On(UIEvent.DistrictLost,       _ => PlaySFX(SFX.DistrictLost));
+        UIEventBus.On(UIEvent.LevelUp,            _ => PlaySFX(SFX.LevelUp));
+        UIEventBus.On(UIEvent.PooDiscovered,      _ => PlaySFX(SFX.PooFound));
+        UIEventBus.On(UIEvent.BoosterActivated,   _ => PlaySFX(SFX.BoosterActivated));
+    }
+
+    void UnsubscribeEvents()
+    {
+        // Static events persist — only unsubscribe if Instance is being destroyed
+        // Since AudioManager is DDOL, this only runs on app quit
     }
 
     void BuildPool()
@@ -75,6 +100,17 @@ public class AudioManager : MonoBehaviour
         _sfxPool.Enqueue(src);
     }
 
-    public void SetMusicVolume(float v) { MusicVolume = v; _musicSource.volume = v; }
-    public void SetSfxVolume(float v)   { SfxVolume   = v; }
+    public void SetMusicVolume(float v)
+    {
+        MusicVolume = Mathf.Clamp01(v);
+        if (_musicSource) _musicSource.volume = MusicVolume;
+    }
+
+    public void SetSfxVolume(float v)
+    {
+        SfxVolume = Mathf.Clamp01(v);
+        // Apply to all pooled SFX sources
+        foreach (var src in _sfxPool)
+            src.volume = SfxVolume;
+    }
 }

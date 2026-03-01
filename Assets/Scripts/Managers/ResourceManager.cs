@@ -1,17 +1,19 @@
 using UnityEngine;
 
 /// <summary>
-/// Tracks all player resources: Poo Resources, Trash Resources, Clan Coins, Gems.
+/// Tracks player resources: PooCoins (main currency) and Gems (premium).
 /// </summary>
 public class ResourceManager : MonoBehaviour
 {
     public static ResourceManager Instance { get; private set; }
 
     // Resources
-    public int PooResources   { get; private set; } = 0;
-    public int TrashResources { get; private set; } = 0;
-    public int ClanCoins      { get; private set; } = Constants.STARTING_CLAN_COINS;
-    public int Gems           { get; private set; } = Constants.STARTING_GEMS;
+    public int PooCoins { get; private set; } = Constants.STARTING_CLAN_COINS;
+    public int Gems     { get; private set; } = Constants.STARTING_GEMS;
+
+    [Header("Passive income")]
+    public float IncomeIntervalSeconds = 60f;
+    float _nextIncomeTime;
 
     void Awake()
     {
@@ -19,47 +21,38 @@ public class ResourceManager : MonoBehaviour
         Instance = this;
     }
 
-    // ---- Poo Resources ----
-    public void AddPooResources(int amount)
+    void Update()
     {
-        PooResources += amount;
-        UIEventBus.EmitResourceChanged("PooResources", PooResources);
+        if (Time.time >= _nextIncomeTime)
+        {
+            int districts = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
+            if (districts > 0)
+            {
+                AddPooCoins(districts * 5);
+                Debug.Log($"[ResourceManager] Passive income: +{districts * 5} PooCoins from {districts} districts.");
+            }
+            _nextIncomeTime = Time.time + IncomeIntervalSeconds;
+        }
     }
-    public bool SpendPooResources(int amount)
+
+    // ---- PooCoins ----
+    public void AddPooCoins(int amount)
     {
-        if (PooResources < amount) return false;
-        PooResources -= amount;
-        UIEventBus.EmitResourceChanged("PooResources", PooResources);
+        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.ResourceMultiplier ?? 1f));
+        PooCoins += bonus;
+        UIEventBus.EmitResourceChanged("PooCoins", PooCoins);
+    }
+    public bool SpendPooCoins(int amount)
+    {
+        if (PooCoins < amount) return false;
+        PooCoins -= amount;
+        UIEventBus.EmitResourceChanged("PooCoins", PooCoins);
         return true;
     }
 
-    // ---- Trash Resources ----
-    public void AddTrashResources(int amount)
-    {
-        TrashResources += amount;
-        UIEventBus.EmitResourceChanged("TrashResources", TrashResources);
-    }
-    public bool SpendTrashResources(int amount)
-    {
-        if (TrashResources < amount) return false;
-        TrashResources -= amount;
-        UIEventBus.EmitResourceChanged("TrashResources", TrashResources);
-        return true;
-    }
-
-    // ---- Coins ----
-    public void AddCoins(int amount)
-    {
-        ClanCoins += amount;
-        UIEventBus.EmitResourceChanged("ClanCoins", ClanCoins);
-    }
-    public bool SpendCoins(int amount)
-    {
-        if (ClanCoins < amount) return false;
-        ClanCoins -= amount;
-        UIEventBus.EmitResourceChanged("ClanCoins", ClanCoins);
-        return true;
-    }
+    // Backward-compatible aliases
+    public void AddCoins(int amount) => AddPooCoins(amount);
+    public bool SpendCoins(int amount) => SpendPooCoins(amount);
 
     // ---- Gems (premium) ----
     public void AddGems(int amount)
@@ -79,23 +72,19 @@ public class ResourceManager : MonoBehaviour
     [System.Serializable]
     public class SaveData
     {
-        public int PooResources, TrashResources, ClanCoins, Gems;
+        public int PooCoins, Gems;
     }
 
     public SaveData GetSaveData() => new()
     {
-        PooResources   = PooResources,
-        TrashResources = TrashResources,
-        ClanCoins      = ClanCoins,
-        Gems           = Gems
+        PooCoins = PooCoins,
+        Gems     = Gems
     };
 
     public void LoadSaveData(SaveData data)
     {
         if (data == null) return;
-        PooResources   = data.PooResources;
-        TrashResources = data.TrashResources;
-        ClanCoins      = data.ClanCoins;
-        Gems           = data.Gems;
+        PooCoins = data.PooCoins;
+        Gems     = data.Gems;
     }
 }

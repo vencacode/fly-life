@@ -16,7 +16,8 @@ public class ClanManager : MonoBehaviour
 
     // Clan state
     public string ClanId   { get; private set; } = "player_clan";
-    public string ClanName { get; set; }         = "The Fly Lifers";
+    public string ClanName { get; private set; } = "The Fly Lifers";
+    public bool   HasCustomClan { get; private set; } = false;
     public int    ClanXP   { get; private set; } = 0;
     public int    ClanLevel{ get; private set; } = 1;
 
@@ -38,6 +39,34 @@ public class ClanManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        EnsureRoleData();
+    }
+
+    /// <summary>All role data assets (Scout, Soldier, Worker).</summary>
+    public FlyRoleData[] AllRoles => new[] { ScoutRoleData, SoldierRoleData, WorkerRoleData };
+
+    void EnsureRoleData()
+    {
+        ScoutRoleData   ??= CreateRoleData("Scout",   FlyRole.Scout,   8,  5, 15, 40, scoutFind: 2.0f);
+        SoldierRoleData ??= CreateRoleData("Soldier", FlyRole.Soldier, 15, 12, 8, 80, soldierAtk: 1.5f);
+        WorkerRoleData  ??= CreateRoleData("Worker",  FlyRole.Worker,  5,  8,  6, 60, workerHatch: 2.0f);
+    }
+
+    static FlyRoleData CreateRoleData(string name, FlyRole role, int atk, int def, int spd, int hp,
+        float scoutFind = 1f, float soldierAtk = 1f, float workerHatch = 1f)
+    {
+        var data = ScriptableObject.CreateInstance<FlyRoleData>();
+        data.name               = name;
+        data.RoleName           = name;
+        data.Role               = role;
+        data.BaseAttack         = atk;
+        data.BaseDefense        = def;
+        data.BaseSpeed          = spd;
+        data.BaseHealth         = hp;
+        data.ScoutFindMultiplier      = scoutFind;
+        data.SoldierAttackMultiplier  = soldierAtk;
+        data.WorkerHatchMultiplier    = workerHatch;
+        return data;
     }
 
     void Start()
@@ -56,11 +85,6 @@ public class ClanManager : MonoBehaviour
 
     void SpawnStartingFly()
     {
-        if (ScoutRoleData == null)
-        {
-            Debug.LogWarning("[ClanManager] ScoutRoleData not assigned — skipping starting fly.");
-            return;
-        }
         var fly = CreateFly(FlyRole.Scout);
         _flies.Add(fly);
         Debug.Log("[ClanManager] Starting fly spawned. Welcome to Fly Life.");
@@ -89,7 +113,8 @@ public class ClanManager : MonoBehaviour
     {
         if (poo == null || poo.IsDry) return;
 
-        float hatchMultiplier = GetBoosterMultiplier(BoosterType.HatchSpeed);
+        float hatchMultiplier = GetBoosterMultiplier(BoosterType.HatchSpeed)
+                              * (BonusManager.Instance?.HatchSpeedMultiplier ?? 1f);
         float fertilityMultiplier = GetBoosterMultiplier(BoosterType.FertilitySpike);
 
         int eggCount = Mathf.RoundToInt(
@@ -125,11 +150,32 @@ public class ClanManager : MonoBehaviour
         _eggBatches.RemoveAll(e => e.IsReady);
     }
 
+    // ---- Clan identity ----
+
+    public void CreateClan(string name)
+    {
+        ClanName = name;
+        ClanId = "clan_" + name.ToLower().Replace(" ", "_") + "_" + Random.Range(1000, 9999);
+        HasCustomClan = true;
+        UIEventBus.Emit(UIEvent.ClanUpdated);
+        Debug.Log($"[ClanManager] Clan created: {ClanName} ({ClanId})");
+    }
+
+    public void JoinClan(string clanId, string clanName)
+    {
+        ClanId = clanId;
+        ClanName = clanName;
+        HasCustomClan = true;
+        UIEventBus.Emit(UIEvent.ClanUpdated);
+        Debug.Log($"[ClanManager] Joined clan: {ClanName} ({ClanId})");
+    }
+
     // ---- XP & Levelling ----
 
     public void AddXP(int amount)
     {
-        ClanXP += amount;
+        int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f));
+        ClanXP += bonus;
         int newLevel = Mathf.FloorToInt(ClanXP / 100f) + 1;
         if (newLevel > ClanLevel)
         {
@@ -142,6 +188,60 @@ public class ClanManager : MonoBehaviour
     {
         Debug.Log($"[ClanManager] LEVEL UP! Clan is now level {level}. 🎉");
         // TODO: trigger UI event, unlock upgrades every 5 levels
+    }
+
+    // ---- Post-battle ----
+
+    public void HealAllFlies()
+    {
+        foreach (var fly in _flies)
+            fly.CurrentHealth = fly.MaxHealth;
+    }
+
+    public void AwardBattleXP(bool won)
+    {
+        int xpPerFly = won ? 50 : 10;
+        foreach (var fly in _flies.Where(f => f.IsAlive))
+        {
+            fly.XP += xpPerFly;
+            int newLevel = Mathf.FloorToInt(fly.XP / 100f) + 1;
+            if (newLevel > fly.Level)
+            {
+                fly.Level = newLevel;
+                fly.Attack    = Mathf.RoundToInt(fly.Attack  * 1.1f);
+                fly.Defense   = Mathf.RoundToInt(fly.Defense * 1.1f);
+                fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * 1.15f);
+                fly.CurrentHealth = fly.MaxHealth;
+                Debug.Log($"[ClanManager] {fly.Role} levelled up to {fly.Level}!");
+                UIEventBus.Emit(UIEvent.LevelUp, fly);
+            }
+        }
+        // Also award clan-level XP
+        AddXP(won ? 50 : 10);
+    }
+
+    // ---- Training ----
+
+    public bool TrainFly(string flyId)
+    {
+        var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
+        if (fly == null) return false;
+        if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendPooCoins(Constants.TRAINING_COST))
+            return false;
+
+        fly.XP += Constants.TRAINING_XP;
+        int newLevel = Mathf.FloorToInt(fly.XP / 100f) + 1;
+        if (newLevel > fly.Level)
+        {
+            fly.Level = newLevel;
+            fly.Attack    = Mathf.RoundToInt(fly.Attack  * 1.1f);
+            fly.Defense   = Mathf.RoundToInt(fly.Defense * 1.1f);
+            fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * 1.15f);
+            fly.CurrentHealth = fly.MaxHealth;
+            UIEventBus.Emit(UIEvent.LevelUp, fly);
+        }
+        Debug.Log($"[ClanManager] Trained {fly.Role}: +{Constants.TRAINING_XP} XP (now {fly.XP})");
+        return true;
     }
 
     // ---- Role assignment ----
@@ -199,9 +299,49 @@ public class ClanManager : MonoBehaviour
         _               => ScoutRoleData
     };
 
+    public List<FlyInstance> GetAllFlies() => new(_flies);
+
     public List<FlyInstance> GetSoldiers(int maxCount = Constants.BATTLE_SLOTS)
         => _flies.Where(f => f.Role == FlyRole.Soldier && f.IsAlive)
                  .Take(maxCount).ToList();
+
+    // ---- Deployment ----
+
+    public List<FlyInstance> GetAvailableFlies(FlyRole role)
+        => _flies.Where(f => f.Role == role && f.IsAlive && !f.IsDeployed).ToList();
+
+    public int GetAvailableCount(FlyRole role)
+        => _flies.Count(f => f.Role == role && f.IsAlive && !f.IsDeployed);
+
+    public List<FlyInstance> GetDeployedFlies(string districtId)
+        => _flies.Where(f => f.IsAlive && f.DeployedDistrictId == districtId).ToList();
+
+    public int GetDeployedCount(string districtId)
+        => _flies.Count(f => f.IsAlive && f.DeployedDistrictId == districtId);
+
+    public int DeployFlies(string districtId, FlyRole role, int count)
+    {
+        var available = GetAvailableFlies(role);
+        int toDeploy = Mathf.Min(count, available.Count);
+        for (int i = 0; i < toDeploy; i++)
+            available[i].DeployedDistrictId = districtId;
+        if (toDeploy > 0)
+            Debug.Log($"[ClanManager] Deployed {toDeploy} {role}s to {districtId}");
+        return toDeploy;
+    }
+
+    public void RecallFlies(string districtId)
+    {
+        int count = 0;
+        foreach (var f in _flies)
+            if (f.DeployedDistrictId == districtId)
+            {
+                f.DeployedDistrictId = null;
+                count++;
+            }
+        if (count > 0)
+            Debug.Log($"[ClanManager] Recalled {count} flies from {districtId}");
+    }
 
     // ---- Save / Load ----
 
@@ -210,6 +350,7 @@ public class ClanManager : MonoBehaviour
     {
         public string ClanId, ClanName;
         public int    ClanXP, ClanLevel;
+        public bool   HasCustomClan;
         public List<FlyInstance>   Flies;
         public List<EggBatch>      Eggs;
         public List<ActiveBooster> Boosters;
@@ -219,6 +360,7 @@ public class ClanManager : MonoBehaviour
     {
         ClanId    = ClanId,   ClanName  = ClanName,
         ClanXP    = ClanXP,   ClanLevel = ClanLevel,
+        HasCustomClan = HasCustomClan,
         Flies     = _flies,   Eggs      = _eggBatches,
         Boosters  = _boosters
     };
@@ -228,6 +370,7 @@ public class ClanManager : MonoBehaviour
         if (data == null) return;
         ClanId    = data.ClanId;    ClanName  = data.ClanName;
         ClanXP    = data.ClanXP;    ClanLevel = data.ClanLevel;
+        HasCustomClan = data.HasCustomClan;
         _flies    = data.Flies    ?? new();
         _eggBatches = data.Eggs   ?? new();
         _boosters = data.Boosters ?? new();

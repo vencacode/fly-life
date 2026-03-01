@@ -14,5 +14,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Battle.unity
     guid: 678d8463e4c18ee448be385ed470b02f
+  - enabled: 1
+    path: Assets/Scenes/ClanScreen.unity
+    guid: 42390ac8f0332d340852994cdfc8b5a2
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

@@ -17,9 +17,13 @@ public class BattleManager : MonoBehaviour
     // Battle state
     public BattleState State { get; private set; } = BattleState.Idle;
     public int Round         { get; private set; } = 0;
+    public string PendingDistrictId { get; private set; }
 
     private List<FlyInstance> _playerSlots   = new(new FlyInstance[Constants.BATTLE_SLOTS]);
     private List<FlyInstance> _enemySlots    = new(new FlyInstance[Constants.BATTLE_SLOTS]);
+    private List<FlyInstance> _pendingEnemies;
+    private List<FlyInstance> _pendingPlayerFlies;
+    private System.Action<bool, string> _onBattleComplete;
     private List<EquipmentData> _pendingDrops = new();
     private float _dropWindowEnd;
 
@@ -28,19 +32,57 @@ public class BattleManager : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
+    }
+
+    /// <summary>Store pending battle data. Called from DistrictInfoPanel before scene load.</summary>
+    public void PrepareBattle(string districtId, List<FlyInstance> enemies)
+    {
+        PendingDistrictId = districtId;
+        _pendingEnemies = enemies;
+        _pendingPlayerFlies = null;
+        // Also set BattleContext for backward compatibility (BattleUI reads it)
+        BattleContext.DistrictId = districtId;
+        BattleContext.EnemyFlies = enemies;
+    }
+
+    /// <summary>Store pending battle data with player-selected flies.</summary>
+    public void PrepareBattle(string districtId, List<FlyInstance> enemies, List<FlyInstance> playerFlies)
+    {
+        PrepareBattle(districtId, enemies);
+        _pendingPlayerFlies = playerFlies;
+    }
+
+    /// <summary>Called by BattleSceneController to kick off the fight.</summary>
+    public void ExecutePendingBattle(System.Action<bool, string> onComplete)
+    {
+        _onBattleComplete = onComplete;
+        var enemies = _pendingEnemies ?? BattleContext.EnemyFlies;
+        if (enemies == null || enemies.Count == 0)
+        {
+            Debug.LogError("[BattleManager] No pending enemies to fight!");
+            onComplete?.Invoke(false, PendingDistrictId);
+            return;
+        }
+        StartBattle(enemies);
     }
 
     // ---- Setup ----
 
     public void StartBattle(List<FlyInstance> enemyFlies)
     {
-        var playerSoldiers = ClanManager.Instance.GetSoldiers(Constants.BATTLE_SLOTS);
-        for (int i = 0; i < Constants.BATTLE_SLOTS; i++)
+        int slots = Mathf.Max(Constants.BATTLE_SLOTS, enemyFlies.Count);
+        // Use player-selected flies if available, otherwise fall back to auto-picking soldiers
+        var playerFlies = _pendingPlayerFlies ?? ClanManager.Instance.GetSoldiers(slots);
+        _pendingPlayerFlies = null;
+
+        _playerSlots.Clear();
+        _enemySlots.Clear();
+        for (int i = 0; i < slots; i++)
         {
-            _playerSlots[i] = i < playerSoldiers.Count ? playerSoldiers[i] : null;
-            _enemySlots[i]  = i < enemyFlies.Count     ? enemyFlies[i]     : null;
+            _playerSlots.Add(i < playerFlies.Count ? playerFlies[i] : null);
+            _enemySlots.Add(i < enemyFlies.Count   ? enemyFlies[i]  : null);
         }
         Round = 0;
         SetState(BattleState.RoundStart);
@@ -100,10 +142,11 @@ public class BattleManager : MonoBehaviour
     List<(FlyInstance attacker, FlyInstance target)> BuildActionOrder()
     {
         var pairs = new List<(FlyInstance, FlyInstance, int speed)>();
-        for (int i = 0; i < Constants.BATTLE_SLOTS; i++)
+        int slots = Mathf.Max(_playerSlots.Count, _enemySlots.Count);
+        for (int i = 0; i < slots; i++)
         {
-            var p = _playerSlots[i];
-            var e = _enemySlots[i];
+            var p = i < _playerSlots.Count ? _playerSlots[i] : null;
+            var e = i < _enemySlots.Count  ? _enemySlots[i]  : null;
             if (p != null && p.IsAlive) pairs.Add((p, e, p.Speed));
             if (e != null && e.IsAlive) pairs.Add((e, p, e.Speed));
         }
@@ -143,19 +186,73 @@ public class BattleManager : MonoBehaviour
         return true;
     }
 
+    // ---- Enemy generation ----
+
+    public static List<FlyInstance> GenerateEnemyFlies(int count)
+    {
+        int level = ClanManager.Instance?.ClanLevel ?? 1;
+        var enemies = new List<FlyInstance>();
+        for (int i = 0; i < count; i++)
+        {
+            int baseAtk = 8 + level * 2 + Random.Range(-2, 3);
+            int baseDef = 6 + level * 2 + Random.Range(-2, 3);
+            int baseSpd = 8 + level     + Random.Range(-2, 3);
+            int baseHp  = 40 + level * 5 + Random.Range(-5, 6);
+            enemies.Add(new FlyInstance
+            {
+                InstanceId    = $"enemy_{i}_{System.Guid.NewGuid().ToString()[..8]}",
+                Role          = FlyRole.Soldier,
+                Level         = level,
+                Attack        = Mathf.Max(1, baseAtk),
+                Defense       = Mathf.Max(1, baseDef),
+                Speed         = Mathf.Max(1, baseSpd),
+                MaxHealth     = Mathf.Max(10, baseHp),
+                CurrentHealth = Mathf.Max(10, baseHp)
+            });
+        }
+        return enemies;
+    }
+
     // ---- End ----
 
     void EndBattle(bool playerWon)
     {
         SetState(BattleState.BattleEnd);
-        int xp = playerWon ? Constants.XP_PER_BATTLE_WIN : Constants.XP_PER_BATTLE_LOSS;
-        ClanManager.Instance?.AddXP(xp);
+
+        // Per-fly XP + clan XP (replaces flat AddXP)
+        ClanManager.Instance?.AwardBattleXP(playerWon);
+        // Full heal after every battle — no permadeath
+        ClanManager.Instance?.HealAllFlies();
 
         if (playerWon)
-            ResourceManager.Instance?.AddCoins(Random.Range(10, 30));
+        {
+            // Check if this is a boss district
+            var district = TerritoryManager.Instance?.GetDistrict(PendingDistrictId);
+            bool isBoss = district?.IsBoss ?? false;
+
+            ResourceManager.Instance?.AddCoins(isBoss ? Random.Range(40, 80) : Random.Range(10, 30));
+
+            // Boss: guaranteed gear drop. Normal: 40% chance
+            float dropChance = isBoss ? 1f : 0.4f;
+            if (Random.value < dropChance)
+            {
+                var droppable = EquipmentRegistry.GetDroppableItems();
+                if (droppable.Count > 0)
+                {
+                    string dropId = droppable[Random.Range(0, droppable.Count)];
+                    InventoryManager.Instance?.AddItem(dropId);
+                    UIEventBus.Emit(UIEvent.BattleItemDropped, dropId);
+                    Debug.Log($"[Battle] {(isBoss ? "BOSS" : "Gear")} drop: {dropId}!");
+                }
+            }
+        }
 
         UIEventBus.Emit(UIEvent.BattleEnded, playerWon);
-        Debug.Log($"[Battle] Battle ended. Player {(playerWon ? "WON 🎉" : "LOST 😢")}");
+        Debug.Log($"[Battle] Battle ended. Player {(playerWon ? "WON" : "LOST")}");
+
+        // Notify BattleSceneController (handles district claiming + scene transition)
+        _onBattleComplete?.Invoke(playerWon, PendingDistrictId);
+        _pendingEnemies = null;
     }
 
     void SetState(BattleState s)

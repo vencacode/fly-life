@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Orchestrates the MainMap scene: spawns district tiles,
@@ -29,12 +30,57 @@ public class MapManager : MonoBehaviour
 
     void Start()
     {
+        if (PooManager.Instance == null)
+            Debug.LogWarning("[MapManager] PooManager not found — ensure Bootstrap scene loaded first.");
         SpawnTiles();
         RefreshAllTiles();
         UIEventBus.OnResourceChanged += OnResourceChanged;
     }
 
     void OnDestroy() => UIEventBus.OnResourceChanged -= OnResourceChanged;
+
+    void Update()
+    {
+        // Detect tap/click on empty space to close panel
+        if (_selectedDistrictId == null) return;
+
+        bool tapped = false;
+        Vector2 screenPos = Vector2.zero;
+
+        if (Input.touchCount == 1 && Input.GetTouch(0).phase == TouchPhase.Began)
+        {
+            tapped = true;
+            screenPos = Input.GetTouch(0).position;
+        }
+        else if (Input.GetMouseButtonDown(0))
+        {
+            tapped = true;
+            screenPos = Input.mousePosition;
+        }
+
+        if (!tapped) return;
+
+        // Ignore if tap is over UI (buttons, panels, etc.)
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+        if (Input.touchCount > 0 && EventSystem.current != null &&
+            EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId)) return;
+
+        // Raycast into world — if no tile collider hit, deselect
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        Vector2 worldPos = cam.ScreenToWorldPoint(screenPos);
+        var hit = Physics2D.OverlapPoint(worldPos);
+        if (hit == null)
+            DeselectCurrent();
+    }
+
+    public void DeselectCurrent()
+    {
+        if (_selectedDistrictId != null && _tiles.TryGetValue(_selectedDistrictId, out var prev))
+            prev.SetSelected(false);
+        _selectedDistrictId = null;
+        InfoPanel?.Hide();
+    }
 
     void SpawnTiles()
     {
@@ -79,7 +125,12 @@ public class MapManager : MonoBehaviour
         }
 
         _selectedDistrictId = districtId;
-        _tiles[districtId].SetSelected(true);
+        if (!_tiles.TryGetValue(districtId, out var tile))
+        {
+            Debug.LogWarning($"[MapManager] Tile '{districtId}' not found in _tiles dictionary.");
+            return;
+        }
+        tile.SetSelected(true);
 
         if (TerritoryManager.Instance.Districts.TryGetValue(districtId, out var d))
             InfoPanel?.Show(d);

@@ -19,6 +19,7 @@ public class DistrictTile : MonoBehaviour, IPointerClickHandler
     public Color EnemyColor     = new Color(0.9f, 0.2f, 0.2f, 0.9f);
     public Color NeutralColor   = new Color(0.6f, 0.6f, 0.6f, 0.6f);
     public Color SelectedColor  = new Color(1f,   0.9f, 0.2f, 1.0f);
+    public Color LockedColor    = new Color(0.2f, 0.2f, 0.2f, 0.8f);
 
     public string DistrictId { get; private set; }
     bool _selected;
@@ -35,15 +36,45 @@ public class DistrictTile : MonoBehaviour, IPointerClickHandler
         if (TerritoryManager.Instance == null) return;
         if (!TerritoryManager.Instance.Districts.TryGetValue(DistrictId, out var d)) return;
 
-        Color c = NeutralColor;
-        if (d.OwnerId == (ClanManager.Instance?.ClanId ?? "player_clan")) c = PlayerColor;
-        else if (!string.IsNullOrEmpty(d.OwnerId)) c = EnemyColor;
+        var theme = DistrictThemeData.Get(d.Theme);
+        string playerClanId = ClanManager.Instance?.ClanId ?? "player_clan";
+        bool isPlayer = d.OwnerId == playerClanId;
+        bool isEnemy = !string.IsNullOrEmpty(d.OwnerId) && !isPlayer;
 
-        if (Background) Background.color = _selected ? SelectedColor : c;
+        // Lock check
+        int playerLevel = ClanManager.Instance?.ClanLevel ?? 1;
+        bool locked = d.IsLocked(playerLevel);
+
+        // Theme-based coloring: owned = full brightness, enemy = red tint, neutral = dimmed, locked = dark
+        Color c;
+        if (locked)
+            c = LockedColor;
+        else if (isPlayer)
+            c = theme.ThemeColor;
+        else if (isEnemy)
+            c = Color.Lerp(theme.ThemeColor, EnemyColor, 0.5f);
+        else
+            c = new Color(theme.ThemeColor.r, theme.ThemeColor.g, theme.ThemeColor.b, 0.5f);
+
+        // Apply ring-based tile sprite
+        if (Background)
+        {
+            Background.sprite = TileArtGenerator.GetTileSprite(d.Ring);
+            Background.color = _selected ? SelectedColor : c;
+        }
+
+        // Name label: icon + name (+ BOSS tag for boss districts)
+        string bossTag = d.IsBoss ? " [BOSS]" : "";
+        if (NameLabel) NameLabel.text = $"{theme.Icon} {d.Name}{bossTag}";
+
         if (StatsLabel)
         {
             int pooCount = d.PooIds?.Count ?? 0;
-            StatsLabel.text = pooCount > 0 ? $"{pooCount} poo" : "";
+            int flyCount = ClanManager.Instance?.GetDeployedCount(d.Id) ?? 0;
+            string parts = "";
+            if (flyCount > 0) parts += $"{flyCount} fly";
+            if (pooCount > 0) parts += (parts.Length > 0 ? " | " : "") + $"{pooCount} poo";
+            StatsLabel.text = parts;
         }
     }
 

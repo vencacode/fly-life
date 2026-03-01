@@ -19,6 +19,9 @@ public class PooMarker : MonoBehaviour
     void Start()
     {
         _basePos = transform.position;
+        // Assign procedural poo sprite if no sprite assigned
+        if (Icon && Icon.sprite == null)
+            Icon.sprite = PooSpriteGenerator.GetPooSprite();
         if (Label) Label.text = "Poo";
     }
 

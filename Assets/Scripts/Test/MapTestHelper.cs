@@ -8,6 +8,9 @@ public static class MapTestHelper
         UnityEngine.RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Init()
     {
+        // Only run on MainMap scene
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "MainMap") return;
+
         // Ensure UI canvas + DistrictInfoPanel exist
         var bootstrap = new UnityEngine.GameObject("__MapSceneBootstrap__");
         bootstrap.AddComponent<MapSceneBootstrap>();

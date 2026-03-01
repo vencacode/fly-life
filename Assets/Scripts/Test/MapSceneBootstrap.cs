@@ -17,7 +17,41 @@ public class MapSceneBootstrap : MonoBehaviour
 
         var panel = BuildDistrictInfoPanel();
         MapManager.Instance.InfoPanel = panel;
-        Debug.Log("[MapSceneBootstrap] DistrictInfoPanel created and wired.");
+
+        BuildClanButton(panel.transform.parent); // add to same canvas
+        Debug.Log("[MapSceneBootstrap] DistrictInfoPanel + ClanButton created and wired.");
+    }
+
+    void BuildClanButton(Transform canvas)
+    {
+        // Clan panel (builds its own canvas)
+        var clanGo = new GameObject("ClanPanel");
+        var clanPanel = clanGo.AddComponent<ClanPanel>();
+
+        // Top-right "Clan" button on the main UI canvas
+        var btnGo = new GameObject("ClanBtn");
+        btnGo.transform.SetParent(canvas, false);
+        var btnRect = btnGo.AddComponent<RectTransform>();
+        btnRect.anchorMin = new Vector2(0.75f, 0.93f);
+        btnRect.anchorMax = new Vector2(0.97f, 0.98f);
+        btnRect.offsetMin = Vector2.zero;
+        btnRect.offsetMax = Vector2.zero;
+        var img = btnGo.AddComponent<Image>();
+        img.color = new Color(0.5f, 0.3f, 0.7f);
+        var btn = btnGo.AddComponent<Button>();
+        btn.onClick.AddListener(() => clanPanel.Show());
+
+        var txtGo = new GameObject("Label");
+        txtGo.transform.SetParent(btnGo.transform, false);
+        var txtRect = txtGo.AddComponent<RectTransform>();
+        txtRect.anchorMin = Vector2.zero;
+        txtRect.anchorMax = Vector2.one;
+        txtRect.sizeDelta = Vector2.zero;
+        var tmp = txtGo.AddComponent<TextMeshProUGUI>();
+        tmp.text = "Clan";
+        tmp.fontSize = 20;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
     }
 
     DistrictInfoPanel BuildDistrictInfoPanel()
@@ -74,6 +108,12 @@ public class MapSceneBootstrap : MonoBehaviour
             new Color(0.9f, 0.3f, 0.2f));
         var claimBtn = CreateButton(btnRow.transform, "Claim", "Claim",
             new Color(0.3f, 0.8f, 0.4f));
+        var spotPooBtn = CreateButton(btnRow.transform, "SpotPoo", "Spot Poo",
+            new Color(0.6f, 0.4f, 0.1f));
+
+        // FlyDeployPanel — lives on its own GameObject, builds its own canvas
+        var deployGo = new GameObject("FlyDeployPanel");
+        var deployPanel = deployGo.AddComponent<FlyDeployPanel>();
 
         // Wire up DistrictInfoPanel component
         var panel = panelGo.AddComponent<DistrictInfoPanel>();
@@ -84,6 +124,8 @@ public class MapSceneBootstrap : MonoBehaviour
         panel.SendFliesButton  = sendBtn;
         panel.AttackButton     = attackBtn;
         panel.ClaimButton      = claimBtn;
+        panel.SpotPooButton    = spotPooBtn;
+        panel.DeployPanel      = deployPanel;
 
         return panel;
     }

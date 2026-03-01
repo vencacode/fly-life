@@ -36,13 +36,15 @@ public class FlyInstance
     public int      Speed;
     public int      CurrentHealth;
     public int      MaxHealth;
+    public string   DeployedDistrictId;   // null/empty = available, otherwise deployed to this district
     public string   EquippedWeaponId;
     public string   EquippedHeadId;
     public string   EquippedBodyId;
     public string   EquippedFeetId;
     public string   EquippedWingsId;
     public string   EquippedOffhandId;
-    public bool     IsAlive => CurrentHealth > 0;
+    public bool     IsAlive    => CurrentHealth > 0;
+    public bool     IsDeployed => !string.IsNullOrEmpty(DeployedDistrictId);
 }
 
 public enum FlyRole { Scout, Soldier, Worker }

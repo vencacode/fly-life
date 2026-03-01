@@ -49,5 +49,10 @@ public enum UIEvent
     PooDiscovered,
     EggHatched,
     LevelUp,
-    BoosterActivated
+    BoosterActivated,
+    CloudSyncStarted,
+    CloudSyncCompleted,
+    CloudSyncFailed,
+    TerritoryUpdatedFromCloud,
+    DailyLoginBonus
 }
