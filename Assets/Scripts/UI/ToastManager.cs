@@ -194,7 +194,7 @@ public class ToastManager : MonoBehaviour
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
         tmp.overflowMode = TextOverflowModes.Ellipsis;
-        tmp.enableWordWrapping = true;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
         var textLE = textGo.AddComponent<LayoutElement>();
         textLE.flexibleWidth = 1;
 

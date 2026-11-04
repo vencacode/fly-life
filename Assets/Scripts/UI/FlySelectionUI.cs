@@ -234,7 +234,7 @@ public class FlySelectionUI : MonoBehaviour
         tmp.fontSize = 18;
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
-        tmp.enableWordWrapping = true;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
 
         // Click handler — make entire card tappable
         var btn = go.AddComponent<Button>();

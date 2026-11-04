@@ -252,7 +252,7 @@ public class GearEquipPopup : MonoBehaviour
         tmp.fontSize = 17;
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
-        tmp.enableWordWrapping = true;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
         tmp.richText = true;
 
         // Action button

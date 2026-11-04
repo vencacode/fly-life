@@ -65,7 +65,7 @@ public class GameManager : MonoBehaviour
         go.AddComponent<RateAppManager>();
 
         // Persistent EventSystem so UI works in every scene
-        if (!Object.FindObjectOfType<UnityEngine.EventSystems.EventSystem>())
+        if (!Object.FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>())
         {
             var es = new GameObject("EventSystem (Auto)");
             es.AddComponent<UnityEngine.EventSystems.EventSystem>();
