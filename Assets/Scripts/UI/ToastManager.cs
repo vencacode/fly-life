@@ -124,6 +124,8 @@ public class ToastManager : MonoBehaviour
         // ContentSizeFitter so container grows with children
         var csf = containerGo.AddComponent<ContentSizeFitter>();
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        SafeAreaCanvas.Apply(canvasGo); // toasts sit at the very top, under the notch otherwise
     }
 
     /// <summary>Show a toast message with optional type for color coding.</summary>

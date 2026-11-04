@@ -267,6 +267,9 @@ public class BattleUI : MonoBehaviour
 
         // End panel — hidden until battle ends
         BuildEndPanel(root);
+
+        // Keep HUD rows clear of notches / gesture bars
+        SafeAreaCanvas.Apply(canvasGo);
     }
 
     void BuildSlotRow(Transform root, TextMeshProUGUI[] names, TextMeshProUGUI[] hps,

@@ -2261,6 +2261,7 @@ GameObject:
   - component: {fileID: 1068866244}
   - component: {fileID: 1068866243}
   - component: {fileID: 1068866242}
+  - component: {fileID: 1068866246}
   m_Layer: 0
   m_Name: UI
   m_TagString: Untagged
@@ -2352,6 +2353,22 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!114 &1068866246
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1068866241}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 236c8b691c068be40a480ae3467fa46f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SafeAreaCanvas
+  KeepFullScreen:
+  - Background
+  - Overlay
+  - Dim
 --- !u!1001 &1100789901
 PrefabInstance:
   m_ObjectHideFlags: 0

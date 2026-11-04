@@ -149,6 +149,11 @@ public static class FlowSmokeTest
         return true;
     }
 
+    static bool UnderSafeArea(string name) =>
+        Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+              .Any(t => t.name == name && t.parent != null && t.parent.name == "SafeArea"
+                        && t.parent.GetComponent<SafeAreaHandler>() != null);
+
     static int CountActive(string name) =>
         Object.FindObjectsByType<Canvas>(FindObjectsInactive.Exclude, FindObjectsSortMode.None).Count(c => c.name == name);
 
@@ -175,6 +180,8 @@ public static class FlowSmokeTest
                 break;
             case 2:
                 Check(gm != null, "GameManager present on MainMap");
+                Check(UnderSafeArea("HUDBar"), "MainMap HUD bar inside SafeArea");
+                Check(UnderSafeArea("ToastContainer"), "Toasts inside SafeArea");
                 gm?.LoadScene("ClanScreen");
                 Next(1.5);
                 break;
@@ -205,6 +212,7 @@ public static class FlowSmokeTest
                 {
                     SessionState.SetBool("FlowSmoke.SawBattle", true);
                     Pass("MainMap -> Battle");
+                    Check(UnderSafeArea("RoundText"), "Battle UI inside SafeArea");
                 }
                 if (Active == "MainMap" && SessionState.GetBool("FlowSmoke.SawBattle", false))
                 {
