@@ -62,7 +62,7 @@ public class ToastManager : MonoBehaviour
                 ShowToast($"{fly.Role} levelled up to {fly.Level}!", ToastType.Success);
         };
 
-        _onDailyLogin = _ => ShowToast("+50 PooCoins, +5 Gems! Daily bonus!", ToastType.Success);
+        _onDailyLogin = _ => ShowToast($"+{Constants.DAILY_LOGIN_COINS} PooCoins, +{Constants.GEMS_DAILY_LOGIN} Gems! Daily bonus!", ToastType.Success);
 
         _onDistrictCaptured = d =>
         {

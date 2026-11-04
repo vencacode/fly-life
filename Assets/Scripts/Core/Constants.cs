@@ -46,6 +46,9 @@ public static class Constants
     public const int    BATTLE_WIN_COINS_MAX    = 30;
     public const int    BOSS_WIN_COINS_MIN      = 40;
     public const int    BOSS_WIN_COINS_MAX      = 80;
+    public const int    BOSS_RUSH_ROUND_COINS_BASE = 50;   // Boss Rush coins per round = base + round * step
+    public const int    BOSS_RUSH_ROUND_COINS_STEP = 25;
+    public const float  BOSS_RUSH_LEGENDARY_CHANCE = 0.25f; // per cleared Boss Rush round
 
     // --- Leveling ---
     public const float  STAT_ATTACK_GROWTH      = 1.1f;    // attack multiplier per level
@@ -63,6 +66,7 @@ public static class Constants
     public const int    AD_BOOSTER_COOLDOWN_SEC = 600;     // 10 min between rewarded ads per booster
 
     // --- Gem income (no IAP) ---
+    public const int    DAILY_LOGIN_COINS     = 50;
     public const int    GEMS_DAILY_LOGIN      = 5;
     public const int    GEMS_BOSS_KILL        = 10;
     public const int    GEMS_FIRST_DISTRICT   = 15;   // one-time tutorial reward

@@ -298,7 +298,8 @@ public class ClanManager : MonoBehaviour
         // Offspring: best of each stat + bonus
         var offspring = CreateFly(fly1.Role);
         offspring.Level = Mathf.Max(fly1.Level, fly2.Level);
-        offspring.XP = offspring.Level * 100;
+        // Level L starts at (L-1) * XP_PER_LEVEL (see AwardBattleXP); Level * 100 granted a free level on next XP gain
+        offspring.XP = (offspring.Level - 1) * Constants.XP_PER_LEVEL;
         offspring.Attack    = Mathf.RoundToInt(Mathf.Max(fly1.Attack, fly2.Attack) * (1f + Constants.BREEDING_STAT_BONUS));
         offspring.Defense   = Mathf.RoundToInt(Mathf.Max(fly1.Defense, fly2.Defense) * (1f + Constants.BREEDING_STAT_BONUS));
         offspring.Speed     = Mathf.RoundToInt(Mathf.Max(fly1.Speed, fly2.Speed) * (1f + Constants.BREEDING_STAT_BONUS));

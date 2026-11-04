@@ -109,12 +109,12 @@ public class BossRushManager : MonoBehaviour
         if (won)
         {
             CurrentRound++;
-            int roundBonus = 50 + (CurrentRound * 25); // increasing rewards
+            int roundBonus = Constants.BOSS_RUSH_ROUND_COINS_BASE + CurrentRound * Constants.BOSS_RUSH_ROUND_COINS_STEP;
             BonusCoinsEarned += roundBonus;
             ResourceManager.Instance?.AddPooCoins(roundBonus);
 
             // Chance for legendary drop each round
-            if (UnityEngine.Random.value < 0.25f)
+            if (UnityEngine.Random.value < Constants.BOSS_RUSH_LEGENDARY_CHANCE)
             {
                 var legendaries = EquipmentRegistry.GetLegendaryItems();
                 if (legendaries.Count > 0)

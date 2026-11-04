@@ -118,9 +118,9 @@ public class GameManager : MonoBehaviour
         if (SaveSystem.LastLoginDate == today) return;
 
         SaveSystem.LastLoginDate = today;
-        ResourceManager.Instance?.AddPooCoins(50);
+        ResourceManager.Instance?.AddPooCoins(Constants.DAILY_LOGIN_COINS);
         ResourceManager.Instance?.AddGems(Constants.GEMS_DAILY_LOGIN);
-        Debug.Log($"[GameManager] Daily login bonus: +50 PooCoins, +{Constants.GEMS_DAILY_LOGIN} Gems!");
+        Debug.Log($"[GameManager] Daily login bonus: +{Constants.DAILY_LOGIN_COINS} PooCoins, +{Constants.GEMS_DAILY_LOGIN} Gems!");
         UIEventBus.Emit(UIEvent.DailyLoginBonus);
     }
 
