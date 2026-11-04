@@ -132,9 +132,31 @@ public class BattleManager : MonoBehaviour
                 yield break;
             }
 
+            // Round cap: high-defense matchups deal 1 damage per hit and could run for minutes.
+            // Decide on remaining health share; defenders win ties.
+            if (Round >= Constants.MAX_BATTLE_ROUNDS)
+            {
+                bool playerAhead = HealthFraction(_playerSlots) > HealthFraction(_enemySlots);
+                Debug.Log($"[Battle] Round cap ({Constants.MAX_BATTLE_ROUNDS}) reached — {(playerAhead ? "player" : "enemy")} wins on remaining health.");
+                EndBattle(playerAhead);
+                yield break;
+            }
+
             yield return new WaitForSeconds(Constants.BATTLE_ROUND_DELAY);
             SetState(BattleState.RoundStart);
         }
+    }
+
+    static float HealthFraction(List<FlyInstance> slots)
+    {
+        int max = 0, cur = 0;
+        foreach (var f in slots)
+        {
+            if (f == null) continue;
+            max += f.MaxHealth;
+            cur += f.CurrentHealth;
+        }
+        return max > 0 ? (float)cur / max : 0f;
     }
 
     // ---- Attack resolution ----

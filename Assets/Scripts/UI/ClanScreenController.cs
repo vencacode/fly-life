@@ -19,6 +19,9 @@ public class ClanScreenController : MonoBehaviour
 
     void Awake()
     {
+        // The persistent GameManager already carries one; a second copy (e.g. the
+        // ClanController object in the ClanScreen scene) would build a duplicate canvas.
+        if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
     }
@@ -109,10 +112,12 @@ public class ClanScreenController : MonoBehaviour
         vpRect.sizeDelta = Vector2.zero;
         scroll.viewport = vpRect;
 
-        var content = new GameObject("Content");
+        // Create with RectTransform up front: `GetComponent() ?? AddComponent()` doesn't work
+        // on Unity objects (fake-null) and used to throw here, leaving the screen without a Back button.
+        var content = new GameObject("Content", typeof(RectTransform));
         content.transform.SetParent(viewport.transform, false);
         _scrollContent = content.transform;
-        var contentRect = content.GetComponent<RectTransform>() ?? content.AddComponent<RectTransform>();
+        var contentRect = content.GetComponent<RectTransform>();
         contentRect.anchorMin = new Vector2(0, 1);
         contentRect.anchorMax = new Vector2(1, 1);
         contentRect.pivot = new Vector2(0.5f, 1);

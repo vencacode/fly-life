@@ -33,6 +33,7 @@ public static class Constants
     public const float  BATTLE_ROUND_DELAY      = 0.5f;    // seconds between rounds
     public const float  BATTLE_ATTACK_DELAY     = 0.3f;    // seconds between attacks in a round
     public const float  ITEM_DROP_WINDOW_SEC    = 3f;      // seconds to tap a dropped item
+    public const int    MAX_BATTLE_ROUNDS       = 10;      // after this, higher remaining health share wins
     public const int    XP_PER_BATTLE_WIN       = 50;
     public const int    XP_PER_BATTLE_LOSS      = 10;
     public const int    XP_PER_LEVEL            = 100;     // XP needed per fly level
