@@ -59,11 +59,16 @@ public class IAPManager : MonoBehaviour
         InitializePurchasing();
     }
 
+    // IAP 5.x ships its runtime as "Unity.Purchasing"; 4.x used "UnityEngine.Purchasing".
+    static Type FindPurchasingType(string name) =>
+        Type.GetType($"UnityEngine.Purchasing.{name}, Unity.Purchasing")
+        ?? Type.GetType($"UnityEngine.Purchasing.{name}, UnityEngine.Purchasing");
+
     static void DetectPackage()
     {
-        _purchasingType = Type.GetType("UnityEngine.Purchasing.UnityPurchasing, UnityEngine.Purchasing");
-        _configBuilderType = Type.GetType("UnityEngine.Purchasing.ConfigurationBuilder, UnityEngine.Purchasing");
-        _productTypeEnumType = Type.GetType("UnityEngine.Purchasing.ProductType, UnityEngine.Purchasing");
+        _purchasingType = FindPurchasingType("UnityPurchasing");
+        _configBuilderType = FindPurchasingType("ConfigurationBuilder");
+        _productTypeEnumType = FindPurchasingType("ProductType");
         _packageAvailable = _purchasingType != null && _configBuilderType != null;
     }
 
@@ -72,7 +77,7 @@ public class IAPManager : MonoBehaviour
         if (!_packageAvailable) return;
         try
         {
-            var stdModuleType = Type.GetType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing");
+            var stdModuleType = FindPurchasingType("StandardPurchasingModule");
             var moduleInstance = stdModuleType?.GetMethod("Instance", Type.EmptyTypes)?.Invoke(null, null);
             var builder = _configBuilderType?.GetMethod("Instance")?.Invoke(null, new[] { moduleInstance });
 
