@@ -26,7 +26,7 @@ public class AdManager : MonoBehaviour
             onComplete?.Invoke();
             return;
         }
-        // TODO: Replace with real AdMob call when ADS_ENABLED = true
+        // Real AdMob integration is Phase 10 Task 66; until then the flag-on path still grants the reward.
         Debug.Log("[AdManager] Rewarded ad shown (stub). Granting reward.");
         onComplete?.Invoke();
     }
@@ -38,6 +38,7 @@ public class AdManager : MonoBehaviour
         {
             BoosterDataId = "WarDrums",
             ActivatedAt   = Time.time,
+            Multiplier    = Constants.BOOSTER_DEFAULT_MULTIPLIER,
             Duration      = 600f // 10 minutes
         });
         Debug.Log("[AdManager] WarDrums booster activated from ad reward.");

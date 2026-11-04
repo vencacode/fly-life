@@ -152,14 +152,16 @@ public static class CloudDataConverter
     {
         BoosterDataId = b.BoosterDataId,
         ActivatedAtUtcTicks = LocalTimeToUtcTicks(b.ActivatedAt),
-        Duration = b.Duration
+        Duration = b.Duration,
+        Multiplier = b.Multiplier
     };
 
     static ActiveBooster ToLocalBooster(CloudBoosterData c) => new()
     {
         BoosterDataId = c.BoosterDataId,
         ActivatedAt = UtcTicksToLocalTime(c.ActivatedAtUtcTicks),
-        Duration = c.Duration
+        Duration = c.Duration,
+        Multiplier = c.Multiplier
     };
 
     // ---- Time helpers ----

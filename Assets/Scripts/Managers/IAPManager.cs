@@ -1,19 +1,19 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Integrates Unity IAP via reflection — compiles and runs with or without
-/// com.unity.purchasing installed. Handles initialization, purchasing, and receipt validation.
+/// In-app purchase facade. For the first playable build IAP is off
+/// (FeatureFlags.IAP_ENABLED = false) and every call is a graceful no-op.
+///
+/// The previous reflection-based integration targeted the legacy
+/// UnityPurchasing/ConfigurationBuilder API, which IAP 5.x marks obsolete and
+/// which never actually initialized the store. Real integration against the
+/// IAP 5 StoreController API is Phase 10 Task 66; it should plug into
+/// InitializeStore() / PurchaseProduct() and call OnPurchaseComplete().
 /// </summary>
 public class IAPManager : MonoBehaviour
 {
     public static IAPManager Instance { get; private set; }
-
-    static bool _packageAvailable;
-    static Type _purchasingType;
-    static Type _configBuilderType;
-    static Type _productTypeEnumType;
 
     public bool IsInitialized { get; private set; }
 
@@ -26,7 +26,7 @@ public class IAPManager : MonoBehaviour
         [Constants.IAP_GEMS_3000] = 3000,
     };
 
-    // Product ID → display price (updated after initialization from store)
+    // Product ID → display price (would be replaced by localized store prices)
     readonly Dictionary<string, string> _prices = new()
     {
         [Constants.IAP_GEMS_100]  = "$0.99",
@@ -41,7 +41,6 @@ public class IAPManager : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
-        DetectPackage();
     }
 
     void Start()
@@ -51,48 +50,14 @@ public class IAPManager : MonoBehaviour
             Debug.Log("[IAPManager] IAP disabled via FeatureFlags.");
             return;
         }
-        if (!_packageAvailable)
-        {
-            Debug.Log("[IAPManager] Unity Purchasing package not detected. IAP disabled.");
-            return;
-        }
-        InitializePurchasing();
+        InitializeStore();
     }
 
-    // IAP 5.x ships its runtime as "Unity.Purchasing"; 4.x used "UnityEngine.Purchasing".
-    static Type FindPurchasingType(string name) =>
-        Type.GetType($"UnityEngine.Purchasing.{name}, Unity.Purchasing")
-        ?? Type.GetType($"UnityEngine.Purchasing.{name}, UnityEngine.Purchasing");
-
-    static void DetectPackage()
+    void InitializeStore()
     {
-        _purchasingType = FindPurchasingType("UnityPurchasing");
-        _configBuilderType = FindPurchasingType("ConfigurationBuilder");
-        _productTypeEnumType = FindPurchasingType("ProductType");
-        _packageAvailable = _purchasingType != null && _configBuilderType != null;
-    }
-
-    void InitializePurchasing()
-    {
-        if (!_packageAvailable) return;
-        try
-        {
-            var stdModuleType = FindPurchasingType("StandardPurchasingModule");
-            var moduleInstance = stdModuleType?.GetMethod("Instance", Type.EmptyTypes)?.Invoke(null, null);
-            var builder = _configBuilderType?.GetMethod("Instance")?.Invoke(null, new[] { moduleInstance });
-
-            var consumable = Enum.ToObject(_productTypeEnumType, 0); // Consumable = 0
-            var addMethod = builder?.GetType().GetMethod("AddProduct", new[] { typeof(string), _productTypeEnumType });
-            foreach (var productId in _products.Keys)
-                addMethod?.Invoke(builder, new object[] { productId, consumable });
-
-            Debug.Log("[IAPManager] IAP products configured.");
-            IsInitialized = true;
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[IAPManager] Init failed: {e.Message}");
-        }
+        // Store SDK not integrated yet (Phase 10 Task 66).
+        Debug.LogWarning("[IAPManager] IAP_ENABLED is true but no store integration exists yet.");
+        IsInitialized = false;
     }
 
     public void PurchaseProduct(string productId)
@@ -103,28 +68,13 @@ public class IAPManager : MonoBehaviour
             ToastManager.Instance?.ShowToast("Purchases not available yet.", ToastType.Warning);
             return;
         }
-        if (!_packageAvailable || !IsInitialized)
+        if (!IsInitialized)
         {
-            Debug.LogWarning("[IAPManager] Cannot purchase — IAP not initialized.");
+            Debug.LogWarning("[IAPManager] Cannot purchase — store not initialized.");
 #if UNITY_EDITOR
-            // Grant gems directly in editor for testing
-            GrantGems(productId);
-#endif
-            return;
-        }
-
-        // In production, call UnityPurchasing.InitiatePurchase(productId) via reflection
-        try
-        {
-            var initMethod = _purchasingType?.GetMethod("InitiatePurchase",
-                new[] { typeof(string) });
-            initMethod?.Invoke(null, new object[] { productId });
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[IAPManager] Purchase failed: {e.Message}");
-#if UNITY_EDITOR
-            GrantGems(productId);
+            GrantGems(productId); // editor-only test path
+#else
+            ToastManager.Instance?.ShowToast("Store unavailable. Try again later.", ToastType.Warning);
 #endif
         }
     }

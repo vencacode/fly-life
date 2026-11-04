@@ -134,6 +134,8 @@ public class RateAppManager : MonoBehaviour
 
     void TryShow(string milestoneId)
     {
+        // App isn't on a store yet: a rate prompt would lead to a missing listing.
+        if (!FeatureFlags.RATE_APP_ENABLED) return;
         if (_hasRated || _shownPrompts.Contains(milestoneId)) return;
         _shownPrompts.Add(milestoneId);
         _popup.SetActive(true);
@@ -155,22 +157,8 @@ public class RateAppManager : MonoBehaviour
             Application.OpenURL("https://apps.apple.com");
         }
 #elif UNITY_ANDROID
-        try
-        {
-            var reviewType = Type.GetType("Google.Play.Review.ReviewManager, Google.Play.Review");
-            if (reviewType != null)
-            {
-                Debug.Log("[RateApp] Google Play In-App Review API detected.");
-            }
-            else
-            {
-                Application.OpenURL("market://details?id=" + Application.identifier);
-            }
-        }
-        catch
-        {
-            Application.OpenURL("market://details?id=" + Application.identifier);
-        }
+        // Google Play In-App Review SDK is not integrated; open the store listing directly.
+        Application.OpenURL("market://details?id=" + Application.identifier);
 #else
         Debug.Log("[RateApp] Store review not available on this platform.");
 #endif

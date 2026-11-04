@@ -9,4 +9,5 @@ public static class FeatureFlags
     public const bool ANALYTICS_ENABLED = false;
     public const bool CLOUD_SAVE_ENABLED = false;
     public const bool PUSH_NOTIFICATIONS_ENABLED = false;
+    public const bool RATE_APP_ENABLED = false;   // enable once the app has a store listing
 }

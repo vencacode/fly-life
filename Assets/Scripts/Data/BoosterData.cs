@@ -28,6 +28,8 @@ public class ActiveBooster
     public string BoosterDataId;
     public float  ActivatedAt;   // Time.time
     public float  Duration;
+    public float  Multiplier;    // copied from BoosterData at activation; 0 in old saves → default
+    public float  EffectiveMultiplier => Multiplier > 0f ? Multiplier : Constants.BOOSTER_DEFAULT_MULTIPLIER;
     public bool   IsActive => UnityEngine.Time.time - ActivatedAt < Duration;
     public float  RemainingSeconds => Duration - (UnityEngine.Time.time - ActivatedAt);
 }

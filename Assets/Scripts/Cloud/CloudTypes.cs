@@ -74,6 +74,7 @@ namespace FlyLife.Cloud
         public string BoosterDataId;
         public long ActivatedAtUtcTicks;
         public float Duration;
+        public float Multiplier;
     }
 
     [Serializable]

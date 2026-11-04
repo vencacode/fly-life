@@ -188,8 +188,18 @@ public class ClanManager : MonoBehaviour
 
     void OnLevelUp(int level)
     {
-        Debug.Log($"[ClanManager] LEVEL UP! Clan is now level {level}. 🎉");
-        // TODO: trigger UI event, unlock upgrades every 5 levels
+        Debug.Log($"[ClanManager] Clan is now level {level}.");
+        ToastManager.Instance?.ShowToast($"Clan reached level {level}!", ToastType.Success);
+
+        // Milestone reward every N clan levels (Gems are gameplay-only while IAP is off)
+        if (level % Constants.CLAN_MILESTONE_INTERVAL == 0)
+        {
+            ResourceManager.Instance?.AddGems(Constants.GEMS_CLAN_MILESTONE);
+            ToastManager.Instance?.ShowToast($"+{Constants.GEMS_CLAN_MILESTONE} Gems (Clan level {level} milestone)", ToastType.Reward);
+        }
+
+        UIEventBus.Emit(UIEvent.LevelUp, null);
+        UIEventBus.Emit(UIEvent.ClanUpdated);
     }
 
     // ---- Post-battle ----
@@ -380,7 +390,7 @@ public class ClanManager : MonoBehaviour
     {
         var active = _boosters.FirstOrDefault(b =>
             b.IsActive && b.BoosterDataId.Contains(type.ToString()));
-        return active != null ? 2.0f : 1.0f; // TODO: read from BoosterData
+        return active?.EffectiveMultiplier ?? 1.0f;
     }
 
     // ---- Helpers ----
