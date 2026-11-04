@@ -175,19 +175,24 @@ public class BattleUI : MonoBehaviour
 
     void RefreshSlots()
     {
-        if (BattleManager.Instance == null) return;
+        var bm = BattleManager.Instance;
+        if (bm == null || _playerNameLabels == null || _enemyNameLabels == null) return;
 
+        // Slot lists are empty before StartBattle(); UI arrays hold BATTLE_SLOTS entries
         for (int i = 0; i < Constants.BATTLE_SLOTS; i++)
         {
-            UpdateSlot(BattleManager.Instance.PlayerSlots[i],
-                _playerNameLabels[i], _playerHpLabels[i], _playerHpBars[i]);
-            UpdateSlot(BattleManager.Instance.EnemySlots[i],
-                _enemyNameLabels[i], _enemyHpLabels[i], _enemyHpBars[i]);
+            var p = i < bm.PlayerSlots.Count ? bm.PlayerSlots[i] : null;
+            var e = i < bm.EnemySlots.Count  ? bm.EnemySlots[i]  : null;
+            if (i < _playerNameLabels.Length)
+                UpdateSlot(p, _playerNameLabels[i], _playerHpLabels[i], _playerHpBars[i]);
+            if (i < _enemyNameLabels.Length)
+                UpdateSlot(e, _enemyNameLabels[i], _enemyHpLabels[i], _enemyHpBars[i]);
         }
     }
 
     void UpdateSlot(FlyInstance fly, TextMeshProUGUI nameLabel, TextMeshProUGUI hpLabel, Image hpBar)
     {
+        if (nameLabel == null || hpLabel == null || hpBar == null) return; // UI not built yet
         if (fly == null)
         {
             nameLabel.text = "-";
@@ -198,7 +203,7 @@ public class BattleUI : MonoBehaviour
 
         nameLabel.text = $"{fly.Role} Lv{fly.Level}";
         hpLabel.text = $"HP:{fly.CurrentHealth}/{fly.MaxHealth}";
-        hpBar.fillAmount = (float)fly.CurrentHealth / fly.MaxHealth;
+        hpBar.fillAmount = fly.MaxHealth > 0 ? (float)fly.CurrentHealth / fly.MaxHealth : 0f;
         hpBar.color = fly.IsAlive
             ? Color.Lerp(new Color(0.9f, 0.2f, 0.2f), new Color(0.2f, 0.9f, 0.3f), hpBar.fillAmount)
             : new Color(0.3f, 0.3f, 0.3f);
