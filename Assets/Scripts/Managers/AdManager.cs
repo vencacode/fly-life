@@ -20,9 +20,14 @@ public class AdManager : MonoBehaviour
     /// </summary>
     public void ShowRewardedAd(System.Action onComplete)
     {
+        if (!FeatureFlags.ADS_ENABLED)
+        {
+            Debug.Log("[AdManager] Ads disabled — granting reward directly.");
+            onComplete?.Invoke();
+            return;
+        }
+        // TODO: Replace with real AdMob call when ADS_ENABLED = true
         Debug.Log("[AdManager] Rewarded ad shown (stub). Granting reward.");
-        // TODO: Replace with real AdMob call:
-        // rewardedAd.Show((reward) => onComplete?.Invoke());
         onComplete?.Invoke();
     }
 

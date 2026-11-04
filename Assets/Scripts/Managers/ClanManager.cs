@@ -85,9 +85,10 @@ public class ClanManager : MonoBehaviour
 
     void SpawnStartingFly()
     {
-        var fly = CreateFly(FlyRole.Scout);
-        _flies.Add(fly);
-        Debug.Log("[ClanManager] Starting fly spawned. Welcome to Fly Life.");
+        _flies.Add(CreateFly(FlyRole.Scout));
+        _flies.Add(CreateFly(FlyRole.Soldier));
+        _flies.Add(CreateFly(FlyRole.Worker));
+        Debug.Log("[ClanManager] Starting flies spawned (Scout, Soldier, Worker). Welcome to Fly Life.");
     }
 
     FlyInstance CreateFly(FlyRole role)
@@ -177,7 +178,7 @@ public class ClanManager : MonoBehaviour
         float seasonalXP = SeasonalEventManager.Instance?.XPMultiplier ?? 1f;
         int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f) * seasonalXP);
         ClanXP += bonus;
-        int newLevel = Mathf.FloorToInt(ClanXP / 100f) + 1;
+        int newLevel = Mathf.FloorToInt(ClanXP / (float)Constants.CLAN_XP_PER_LEVEL) + 1;
         if (newLevel > ClanLevel)
         {
             ClanLevel = newLevel;
@@ -201,24 +202,24 @@ public class ClanManager : MonoBehaviour
 
     public void AwardBattleXP(bool won)
     {
-        int xpPerFly = won ? 50 : 10;
+        int xpPerFly = won ? Constants.XP_PER_BATTLE_WIN : Constants.XP_PER_BATTLE_LOSS;
         foreach (var fly in _flies.Where(f => f.IsAlive))
         {
             fly.XP += xpPerFly;
-            int newLevel = Mathf.FloorToInt(fly.XP / 100f) + 1;
+            int newLevel = Mathf.FloorToInt(fly.XP / (float)Constants.XP_PER_LEVEL) + 1;
             if (newLevel > fly.Level)
             {
                 fly.Level = newLevel;
-                fly.Attack    = Mathf.RoundToInt(fly.Attack  * 1.1f);
-                fly.Defense   = Mathf.RoundToInt(fly.Defense * 1.1f);
-                fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * 1.15f);
+                fly.Attack    = Mathf.RoundToInt(fly.Attack  * Constants.STAT_ATTACK_GROWTH);
+                fly.Defense   = Mathf.RoundToInt(fly.Defense * Constants.STAT_DEFENSE_GROWTH);
+                fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * Constants.STAT_HEALTH_GROWTH);
                 fly.CurrentHealth = fly.MaxHealth;
                 Debug.Log($"[ClanManager] {fly.Role} levelled up to {fly.Level}!");
                 UIEventBus.Emit(UIEvent.LevelUp, fly);
             }
         }
         // Also award clan-level XP
-        AddXP(won ? 50 : 10);
+        AddXP(won ? Constants.XP_PER_BATTLE_WIN : Constants.XP_PER_BATTLE_LOSS);
     }
 
     // ---- Training ----
@@ -231,13 +232,13 @@ public class ClanManager : MonoBehaviour
             return false;
 
         fly.XP += Constants.TRAINING_XP;
-        int newLevel = Mathf.FloorToInt(fly.XP / 100f) + 1;
+        int newLevel = Mathf.FloorToInt(fly.XP / (float)Constants.XP_PER_LEVEL) + 1;
         if (newLevel > fly.Level)
         {
             fly.Level = newLevel;
-            fly.Attack    = Mathf.RoundToInt(fly.Attack  * 1.1f);
-            fly.Defense   = Mathf.RoundToInt(fly.Defense * 1.1f);
-            fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * 1.15f);
+            fly.Attack    = Mathf.RoundToInt(fly.Attack  * Constants.STAT_ATTACK_GROWTH);
+            fly.Defense   = Mathf.RoundToInt(fly.Defense * Constants.STAT_DEFENSE_GROWTH);
+            fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * Constants.STAT_HEALTH_GROWTH);
             fly.CurrentHealth = fly.MaxHealth;
             UIEventBus.Emit(UIEvent.LevelUp, fly);
         }
@@ -384,7 +385,16 @@ public class ClanManager : MonoBehaviour
 
     // ---- Helpers ----
 
-    void PruneDeadFlies() => _flies.RemoveAll(f => !f.IsAlive);
+    void PruneDeadFlies()
+    {
+        // Never prune during active battle — EndBattle calls HealAllFlies to restore them
+        if (BattleManager.Instance != null && BattleManager.Instance.State != BattleState.Idle)
+            return;
+        _flies.RemoveAll(f => !f.IsAlive);
+        // Always keep at least one fly
+        if (_flies.Count == 0)
+            SpawnStartingFly();
+    }
 
     FlyRoleData GetRoleData(FlyRole role) => role switch
     {
@@ -463,12 +473,21 @@ public class ClanManager : MonoBehaviour
     public void LoadSaveData(SaveData data)
     {
         if (data == null) return;
-        ClanId    = data.ClanId;    ClanName  = data.ClanName;
-        ClanXP    = data.ClanXP;    ClanLevel = data.ClanLevel;
+        ClanId    = string.IsNullOrEmpty(data.ClanId) ? "player_clan" : data.ClanId;
+        ClanName  = string.IsNullOrEmpty(data.ClanName) ? "The Fly Lifers" : data.ClanName;
+        ClanXP    = data.ClanXP;
+        ClanLevel = Mathf.Max(1, data.ClanLevel);
         HasCustomClan = data.HasCustomClan;
         _flies    = data.Flies    ?? new();
         _eggBatches = data.Eggs   ?? new();
         _boosters = data.Boosters ?? new();
+
+        // Ensure at least one fly exists
+        if (_flies.Count == 0)
+            SpawnStartingFly();
+
+        // Heal all flies on load (no permadeath between sessions)
+        HealAllFlies();
     }
 }
 

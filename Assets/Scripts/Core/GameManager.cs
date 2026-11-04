@@ -60,7 +60,18 @@ public class GameManager : MonoBehaviour
         go.AddComponent<CodexUI>();
         go.AddComponent<BossRushManager>();
         go.AddComponent<BossRushUI>();
+        go.AddComponent<ClanScreenController>();
+        go.AddComponent<BattleUI>();
         go.AddComponent<RateAppManager>();
+
+        // Persistent EventSystem so UI works in every scene
+        if (!Object.FindObjectOfType<UnityEngine.EventSystems.EventSystem>())
+        {
+            var es = new GameObject("EventSystem (Auto)");
+            es.AddComponent<UnityEngine.EventSystems.EventSystem>();
+            es.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            DontDestroyOnLoad(es);
+        }
     }
 
     void Awake()
@@ -74,9 +85,26 @@ public class GameManager : MonoBehaviour
     IEnumerator Start()
     {
         yield return null; // wait one frame for all managers' Awake()/Start()
-        SaveSystem.Load();
-        CheckDailyLoginBonus();
-        CheckOfflineProgress();
+
+        try
+        {
+            SaveSystem.Load();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[GameManager] Save load failed: {e.Message}");
+        }
+
+        try
+        {
+            CheckDailyLoginBonus();
+            CheckOfflineProgress();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[GameManager] Startup check failed: {e.Message}");
+        }
+
         AudioManager.Instance?.PlayMusic(AudioManager.Track.Menu);
 
         // Start tutorial for first-time players (after MainMap loads)
@@ -91,8 +119,8 @@ public class GameManager : MonoBehaviour
 
         SaveSystem.LastLoginDate = today;
         ResourceManager.Instance?.AddPooCoins(50);
-        ResourceManager.Instance?.AddGems(5);
-        Debug.Log("[GameManager] Daily login bonus: +50 PooCoins, +5 Gems!");
+        ResourceManager.Instance?.AddGems(Constants.GEMS_DAILY_LOGIN);
+        Debug.Log($"[GameManager] Daily login bonus: +50 PooCoins, +{Constants.GEMS_DAILY_LOGIN} Gems!");
         UIEventBus.Emit(UIEvent.DailyLoginBonus);
     }
 

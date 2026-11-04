@@ -26,6 +26,11 @@ public class NotificationManager : MonoBehaviour
 
     void Start()
     {
+        if (!FeatureFlags.PUSH_NOTIFICATIONS_ENABLED)
+        {
+            Debug.Log("[NotificationManager] Push notifications disabled via FeatureFlags.");
+            return;
+        }
         if (!_packageAvailable)
         {
             Debug.Log("[NotificationManager] Mobile Notifications package not installed. Notifications disabled.");
@@ -108,6 +113,7 @@ public class NotificationManager : MonoBehaviour
     /// <summary>Schedule a "come back" notification 24h from now.</summary>
     public void ScheduleDailyReminder()
     {
+        if (!FeatureFlags.PUSH_NOTIFICATIONS_ENABLED) return;
         SendNotification(
             "Your flies miss you!",
             "Districts are generating PooCoins. Come collect!",
@@ -118,6 +124,7 @@ public class NotificationManager : MonoBehaviour
     /// <summary>Fire a near-instant notification that a district is under attack.</summary>
     public void NotifyDistrictUnderAttack(string districtName)
     {
+        if (!FeatureFlags.PUSH_NOTIFICATIONS_ENABLED) return;
         SendNotification(
             "District under attack!",
             $"{districtName} is being invaded by enemies!",

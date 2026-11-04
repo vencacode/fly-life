@@ -12,6 +12,12 @@ public class MapSceneBootstrap : MonoBehaviour
 {
     void Start()
     {
+        if (GameManager.Instance == null)
+        {
+            Debug.LogError("[MapSceneBootstrap] No GameManager — redirecting to Bootstrap.");
+            UnityEngine.SceneManagement.SceneManager.LoadScene(Constants.SCENE_BOOTSTRAP);
+            return;
+        }
         if (MapManager.Instance == null) return;
         if (MapManager.Instance.InfoPanel != null) return; // already wired
 
@@ -24,11 +30,7 @@ public class MapSceneBootstrap : MonoBehaviour
 
     void BuildClanButton(Transform canvas)
     {
-        // Clan panel (builds its own canvas)
-        var clanGo = new GameObject("ClanPanel");
-        var clanPanel = clanGo.AddComponent<ClanPanel>();
-
-        // Top-right "Clan" button on the main UI canvas
+        // Top-right "Clan" button on the main UI canvas — navigates to ClanScreen
         var btnGo = new GameObject("ClanBtn");
         btnGo.transform.SetParent(canvas, false);
         var btnRect = btnGo.AddComponent<RectTransform>();
@@ -39,7 +41,7 @@ public class MapSceneBootstrap : MonoBehaviour
         var img = btnGo.AddComponent<Image>();
         img.color = new Color(0.5f, 0.3f, 0.7f);
         var btn = btnGo.AddComponent<Button>();
-        btn.onClick.AddListener(() => clanPanel.Show());
+        btn.onClick.AddListener(() => GameManager.Instance?.LoadScene(Constants.SCENE_CLAN));
 
         var txtGo = new GameObject("Label");
         txtGo.transform.SetParent(btnGo.transform, false);

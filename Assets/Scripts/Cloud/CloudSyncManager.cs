@@ -46,6 +46,12 @@ public class CloudSyncManager : MonoBehaviour
 
     async void Start()
     {
+        if (!FeatureFlags.CLOUD_SAVE_ENABLED)
+        {
+            Debug.Log("[CloudSync] Cloud save disabled via FeatureFlags.");
+            return;
+        }
+
 #if FIREBASE_FIRESTORE
         if (_cloud is FirestoreServiceImpl impl)
             await impl.InitializeAsync();
@@ -68,6 +74,7 @@ public class CloudSyncManager : MonoBehaviour
     /// </summary>
     public async void PushToCloud()
     {
+        if (!FeatureFlags.CLOUD_SAVE_ENABLED) return;
         if (!_cloud.IsAvailable || _isSyncing) return;
         _isSyncing = true;
         UIEventBus.Emit(UIEvent.CloudSyncStarted);
@@ -150,6 +157,7 @@ public class CloudSyncManager : MonoBehaviour
     /// </summary>
     public async void PushTerritoryToCloud()
     {
+        if (!FeatureFlags.CLOUD_SAVE_ENABLED) return;
         if (!_cloud.IsAvailable) return;
 
         try

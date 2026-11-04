@@ -20,10 +20,22 @@ public class ClanScreenController : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    void Start()
+    void OnDestroy()
     {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+    {
+        if (scene.name != "ClanScreen") return;
+        // Canvas is destroyed on scene change — rebuild it
+        _canvas = null;
+        _scrollContent = null;
+        foreach (var card in _flyCards) if (card != null) Destroy(card);
+        _flyCards.Clear();
         BuildUI();
         RefreshFlyList();
     }
@@ -40,14 +52,24 @@ public class ClanScreenController : MonoBehaviour
         scaler.referenceResolution = new Vector2(1080, 1920);
         canvasGo.AddComponent<GraphicRaycaster>();
 
-        // Background
+        // Background (must be first child so it renders behind everything)
         var bg = CreatePanel(canvasGo.transform, "Background", new Color(0.1f, 0.1f, 0.15f));
-        bg.GetComponent<RectTransform>().anchorMin = Vector2.zero;
-        bg.GetComponent<RectTransform>().anchorMax = Vector2.one;
-        bg.GetComponent<RectTransform>().sizeDelta = Vector2.zero;
+        var bgRect = bg.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.sizeDelta = Vector2.zero;
+        bg.GetComponent<Image>().raycastTarget = false;
+
+        // Safe area wrapper
+        var safeArea = new GameObject("SafeArea");
+        safeArea.transform.SetParent(canvasGo.transform, false);
+        var safeRT = safeArea.AddComponent<RectTransform>();
+        safeRT.anchorMin = Vector2.zero; safeRT.anchorMax = Vector2.one;
+        safeRT.offsetMin = Vector2.zero; safeRT.offsetMax = Vector2.zero;
+        safeArea.AddComponent<SafeAreaHandler>();
 
         // Title
-        var title = CreateText(canvasGo.transform, "Title", "YOUR CLAN", 28, TextAlignmentOptions.Center);
+        var title = CreateText(safeArea.transform, "Title", "YOUR CLAN", 28, TextAlignmentOptions.Center);
         var titleRect = title.GetComponent<RectTransform>();
         titleRect.anchorMin = new Vector2(0, 1);
         titleRect.anchorMax = new Vector2(1, 1);
@@ -59,7 +81,7 @@ public class ClanScreenController : MonoBehaviour
         string clanName = ClanManager.Instance?.ClanName ?? "The Fly Lifers";
         int clanLevel = ClanManager.Instance?.ClanLevel ?? 1;
         int totalFlies = ClanManager.Instance?.TotalFlies ?? 0;
-        var info = CreateText(canvasGo.transform, "ClanInfo",
+        var info = CreateText(safeArea.transform, "ClanInfo",
             $"{clanName}  |  Level {clanLevel}  |  {totalFlies} flies", 18, TextAlignmentOptions.Center);
         var infoRect = info.GetComponent<RectTransform>();
         infoRect.anchorMin = new Vector2(0, 1);
@@ -70,7 +92,7 @@ public class ClanScreenController : MonoBehaviour
 
         // Scroll view
         var scrollGo = new GameObject("ScrollView");
-        scrollGo.transform.SetParent(canvasGo.transform, false);
+        scrollGo.transform.SetParent(safeArea.transform, false);
         var scrollRect = scrollGo.AddComponent<RectTransform>();
         scrollRect.anchorMin = new Vector2(0.05f, 0.05f);
         scrollRect.anchorMax = new Vector2(0.95f, 0.85f);
@@ -90,21 +112,25 @@ public class ClanScreenController : MonoBehaviour
         var content = new GameObject("Content");
         content.transform.SetParent(viewport.transform, false);
         _scrollContent = content.transform;
-        var contentRect = content.AddComponent<RectTransform>();
+        var contentRect = content.GetComponent<RectTransform>() ?? content.AddComponent<RectTransform>();
         contentRect.anchorMin = new Vector2(0, 1);
         contentRect.anchorMax = new Vector2(1, 1);
         contentRect.pivot = new Vector2(0.5f, 1);
+        contentRect.offsetMin = Vector2.zero;
+        contentRect.offsetMax = Vector2.zero;
         contentRect.sizeDelta = new Vector2(0, 0);
         var vlg = content.AddComponent<VerticalLayoutGroup>();
         vlg.spacing = 8;
         vlg.padding = new RectOffset(5, 5, 5, 5);
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
         content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         scroll.content = contentRect;
 
         // Back button
-        var backBtn = CreateButton(canvasGo.transform, "BackButton", "< Back to Map", () =>
+        var backBtn = CreateButton(safeArea.transform, "BackButton", "< Back to Map", () =>
         {
             GameManager.Instance?.LoadScene("MainMap");
         });
@@ -114,7 +140,7 @@ public class ClanScreenController : MonoBehaviour
         backRect.sizeDelta = Vector2.zero;
 
         // Breed button
-        var breedBtn = CreateButton(canvasGo.transform, "BreedButton", "Breed Flies", () =>
+        var breedBtn = CreateButton(safeArea.transform, "BreedButton", "Breed Flies", () =>
         {
             BreedingUI.Instance?.Toggle();
         });
@@ -131,20 +157,35 @@ public class ClanScreenController : MonoBehaviour
         _flyCards.Clear();
 
         var flies = ClanManager.Instance?.Flies;
-        if (flies == null) return;
+        if (flies == null || flies.Count == 0)
+        {
+            Debug.Log($"[ClanScreen] No flies to display (ClanManager null: {ClanManager.Instance == null})");
+            return;
+        }
 
+        Debug.Log($"[ClanScreen] Displaying {flies.Count} flies");
         foreach (var fly in flies)
         {
-            var card = CreateFlyCard(fly);
-            _flyCards.Add(card);
+            try
+            {
+                var card = CreateFlyCard(fly);
+                _flyCards.Add(card);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[ClanScreen] Failed to create card for fly {fly?.InstanceId}: {e.Message}");
+            }
         }
     }
 
     GameObject CreateFlyCard(FlyInstance fly)
     {
         var card = CreatePanel(_scrollContent, $"Fly_{fly.InstanceId}", new Color(0.2f, 0.2f, 0.25f));
+        var cardRect = card.GetComponent<RectTransform>();
+        cardRect.sizeDelta = new Vector2(0, 100);
         var le = card.AddComponent<LayoutElement>();
-        le.preferredHeight = 100; // taller to fit action buttons
+        le.preferredHeight = 100;
+        le.minHeight = 100;
 
         // ── Row 1: Name + Stats + Gear ──
 

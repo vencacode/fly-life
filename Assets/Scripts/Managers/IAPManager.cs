@@ -46,6 +46,11 @@ public class IAPManager : MonoBehaviour
 
     void Start()
     {
+        if (!FeatureFlags.IAP_ENABLED)
+        {
+            Debug.Log("[IAPManager] IAP disabled via FeatureFlags.");
+            return;
+        }
         if (!_packageAvailable)
         {
             Debug.Log("[IAPManager] Unity Purchasing package not detected. IAP disabled.");
@@ -87,6 +92,12 @@ public class IAPManager : MonoBehaviour
 
     public void PurchaseProduct(string productId)
     {
+        if (!FeatureFlags.IAP_ENABLED)
+        {
+            Debug.Log("[IAPManager] IAP disabled.");
+            ToastManager.Instance?.ShowToast("Purchases not available yet.", ToastType.Warning);
+            return;
+        }
         if (!_packageAvailable || !IsInitialized)
         {
             Debug.LogWarning("[IAPManager] Cannot purchase — IAP not initialized.");

@@ -47,11 +47,14 @@ public class SettingsScreenController : MonoBehaviour
             new Color(0.2f, 0.2f, 0.25f, 0.85f), 36);
         _gearButton.onClick.AddListener(Toggle);
 
-        // ── Gem shop button (top-right, next to gear) ──
-        var gemBtn = CreateButton(canvasGo.transform, "GemShopButton", "\u25C6",
-            new Vector2(0.80f, 0.94f), new Vector2(0.88f, 0.98f),
-            new Color(0.2f, 0.3f, 0.5f, 0.85f), 30);
-        gemBtn.onClick.AddListener(() => GemShopUI.Instance?.Toggle());
+        // ── Gem shop button (top-right, next to gear) — hidden when IAP disabled ──
+        if (FeatureFlags.IAP_ENABLED)
+        {
+            var gemBtn = CreateButton(canvasGo.transform, "GemShopButton", "\u25C6",
+                new Vector2(0.80f, 0.94f), new Vector2(0.88f, 0.98f),
+                new Color(0.2f, 0.3f, 0.5f, 0.85f), 30);
+            gemBtn.onClick.AddListener(() => GemShopUI.Instance?.Toggle());
+        }
 
         // ── Leaderboard button (top-right, next to gem) ──
         var lbBtn = CreateButton(canvasGo.transform, "LeaderboardButton", "\u265F",

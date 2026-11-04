@@ -29,11 +29,30 @@ public class BattleSceneController : MonoBehaviour
 
     void OnBattleComplete(bool playerWon, string districtId)
     {
-        // If won, claim the district
         if (playerWon && !string.IsNullOrEmpty(districtId))
-            TerritoryManager.Instance?.ClaimDistrict(
-                districtId,
-                ClanManager.Instance?.ClanId ?? "player_clan");
+        {
+            string clanId = ClanManager.Instance?.ClanId ?? "player_clan";
+            int ownedBefore = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
+
+            TerritoryManager.Instance?.ClaimDistrict(districtId, clanId);
+
+            int ownedAfter = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
+
+            // First district ever captured — bonus gems
+            if (ownedBefore == 0 && ownedAfter > 0)
+            {
+                ResourceManager.Instance?.AddGems(Constants.GEMS_FIRST_DISTRICT);
+                ToastManager.Instance?.ShowToast($"+{Constants.GEMS_FIRST_DISTRICT} Gems (First conquest!)", ToastType.Reward);
+            }
+
+            // All districts captured — one-time reward
+            int totalDistricts = TerritoryManager.Instance?.TotalDistricts ?? 25;
+            if (ownedAfter >= totalDistricts && ownedBefore < totalDistricts)
+            {
+                ResourceManager.Instance?.AddGems(Constants.GEMS_FULL_MAP_CLEAR);
+                ToastManager.Instance?.ShowToast($"+{Constants.GEMS_FULL_MAP_CLEAR} Gems (World Domination!)", ToastType.Reward);
+            }
+        }
 
         // Return to map after delay (BattleUI shows result overlay)
         Invoke(nameof(ReturnToMap), 2.5f);

@@ -1218,3197 +1218,687 @@ In `BattleUI.OnAttack()`: flash the target slot Image component red for 0.2 seco
 
 ---
 
-## PHASE 6 — Game Feel & Onboarding
+## PHASE 9 — First Playable
 
-### TASK 23 — Tutorial Flow
+### TASK 51 — Disable Ads & IAP at Runtime
 
-**Goal:** First-time player is guided through claiming center district in a scripted sequence. Subsequent sessions skip tutorial.
+**Goal:** All ad and IAP code paths are gated behind feature flags. "Watch Ad" buttons hidden. Gem purchases disabled. Game is fully playable without any SDK.
 
-**Requires:** Task 01 (Bootstrap), Task 03 (Battle), Task 07 (SaveSystem)
+**Requires:** Task 14 (AdManager), Task 36 (IAPManager)
 
-**Files:** new `TutorialManager.cs`, modify `GameManager.cs`, modify `SaveSystem.cs`, modify `DistrictInfoPanel.cs`
+**Files:** new `FeatureFlags.cs`, modify `AdManager.cs`, modify `IAPManager.cs`, modify any UI that shows ad/IAP buttons
 
 **Steps:**
 
-1. Add `bool TutorialComplete` to `SaveFile` in `SaveSystem.cs`.
-
-2. Create `Assets/Scripts/Managers/TutorialManager.cs`:
+1. Create `Assets/Scripts/Config/FeatureFlags.cs`:
 ```csharp
-using System.Collections;
 using UnityEngine;
-using TMPro;
 
-public class TutorialManager : MonoBehaviour
+/// <summary>
+/// Central toggle for features that aren't ready for the first playable build.
+/// Flip these to true when real SDKs are integrated.
+/// </summary>
+public static class FeatureFlags
 {
-    public static TutorialManager Instance { get; private set; }
-
-    [Header("UI")]
-    public GameObject OverlayPanel;       // full-screen semi-transparent
-    public TextMeshProUGUI DialogueText;
-    public GameObject TapToContinue;
-    public GameObject PointerArrow;       // arrow sprite pointing at target
-
-    bool _waitingForTap;
-    bool _active;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-    }
-
-    public void StartTutorial()
-    {
-        _active = true;
-        StartCoroutine(TutorialSequence());
-    }
-
-    IEnumerator TutorialSequence()
-    {
-        // Step 1: Welcome
-        yield return ShowDialogue("Welcome, Commander! Your fly clan needs territory. Let's take our first district.");
-
-        // Step 2: Point at center tile
-        PointerArrow?.SetActive(true);
-        yield return ShowDialogue("Tap the center district to inspect it.");
-
-        // Step 3: Wait for player to open DistrictInfoPanel on center district
-        yield return new WaitUntil(() => DistrictInfoPanel.ActiveDistrict?.Id == "district_2_2");
-        PointerArrow?.SetActive(false);
-
-        // Step 4: Point at Claim/Attack button
-        yield return ShowDialogue("Now tap 'Attack' to fight for this district!");
-
-        // Step 5: Wait for battle scene load
-        yield return new WaitUntil(() => UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Battle");
-
-        // Step 6: Battle runs automatically — wait for return to MainMap
-        yield return new WaitUntil(() => UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMap");
-
-        // Step 7: Congrats
-        yield return ShowDialogue("Victory! This district is now yours. It generates PooCoins every minute. Keep conquering!");
-
-        // Done
-        _active = false;
-        OverlayPanel?.SetActive(false);
-        SaveSystem.Instance?.MarkTutorialComplete();
-    }
-
-    IEnumerator ShowDialogue(string text)
-    {
-        OverlayPanel?.SetActive(true);
-        if (DialogueText) DialogueText.text = text;
-        TapToContinue?.SetActive(true);
-        _waitingForTap = true;
-        yield return new WaitUntil(() => !_waitingForTap);
-        TapToContinue?.SetActive(false);
-    }
-
-    void Update()
-    {
-        if (_waitingForTap && Input.GetMouseButtonDown(0))
-            _waitingForTap = false;
-    }
-
-    public bool IsActive => _active;
+    public const bool ADS_ENABLED = false;
+    public const bool IAP_ENABLED = false;
+    public const bool ANALYTICS_ENABLED = false;
+    public const bool CLOUD_SAVE_ENABLED = false;
+    public const bool PUSH_NOTIFICATIONS_ENABLED = false;
 }
 ```
 
-3. Add `public static District ActiveDistrict` to `DistrictInfoPanel.cs`:
+2. In `AdManager.cs`, gate all ad calls:
 ```csharp
-public static District ActiveDistrict { get; private set; }
-
-public void Show(District d)
+public void ShowRewardedAd(System.Action onComplete)
 {
-    ActiveDistrict = d;
-    // ... rest of existing Show() code
-}
-
-public void Hide()
-{
-    ActiveDistrict = null;
-    gameObject.SetActive(false);
+    if (!FeatureFlags.ADS_ENABLED)
+    {
+        Debug.Log("[AdManager] Ads disabled — granting reward directly.");
+        onComplete?.Invoke(); // give reward without ad in dev builds
+        return;
+    }
+    // ... existing ad code
 }
 ```
 
-4. In `GameManager.cs`, after load check tutorial state:
+3. In `IAPManager.cs`, gate all purchase calls:
 ```csharp
-// After SaveSystem.Load() completes and MainMap is loaded:
-if (!SaveSystem.Instance.IsTutorialComplete())
-    TutorialManager.Instance?.StartTutorial();
-```
-
-5. Add `MarkTutorialComplete()` and `IsTutorialComplete()` to `SaveSystem.cs`:
-```csharp
-public void MarkTutorialComplete()
+public void PurchaseGemPack(string packId)
 {
-    _currentFile.TutorialComplete = true;
-    Save();
+    if (!FeatureFlags.IAP_ENABLED)
+    {
+        Debug.Log("[IAPManager] IAP disabled.");
+        ToastManager.Instance?.ShowToast("Purchases not available yet.");
+        return;
+    }
+    // ... existing IAP code
 }
-
-public bool IsTutorialComplete() => _currentFile?.TutorialComplete ?? false;
 ```
 
-6. Build tutorial UI in MainMap scene:
+4. Hide "Watch Ad" button in `DistrictInfoPanel.cs`:
+```csharp
+// In Show():
+WatchAdButton?.gameObject.SetActive(FeatureFlags.ADS_ENABLED);
+```
+
+5. Hide Gem purchase buttons wherever they appear (Settings, Clan Screen, Skin shop):
+```csharp
+BuyGemsButton?.gameObject.SetActive(FeatureFlags.IAP_ENABLED);
+```
+
+6. Search entire codebase for any direct AdMob/IAP SDK calls not behind the flag:
 ```powershell
-.\unity-cmd.ps1 '[
-  {"type": "create", "path": "TutorialCanvas/OverlayPanel", "components": ["Canvas", "Image"]},
-  {"type": "create", "path": "TutorialCanvas/OverlayPanel/DialogueText", "components": ["TextMeshProUGUI"]},
-  {"type": "create", "path": "TutorialCanvas/OverlayPanel/TapToContinue", "components": ["TextMeshProUGUI"]},
-  {"type": "create", "path": "TutorialCanvas/PointerArrow", "components": ["Image"]},
-  {"type": "create", "path": "TutorialCanvas/TutorialManager", "components": ["TutorialManager"]},
-  {"type": "save-scene"}
-]'
+# Run in project root:
+grep -rn "GoogleMobileAds\|UnityPurchasing\|AdRequest\|BuyProduct" Assets/Scripts/ --include="*.cs"
 ```
+Wrap every match in `if (FeatureFlags.X_ENABLED)` or early-return.
 
-7. Test: delete save file → play from Bootstrap → verify tutorial sequence runs → complete it → restart → verify tutorial is skipped.
+7. Test: play full session → no ad popups, no purchase prompts, no SDK-related errors in console.
 
 ---
 
-### TASK 24 — Toast Notification System
+### TASK 52 — Gem Economy Rebalance
 
-**Goal:** In-game toast popups for: district lost, gear dropped, level up, income received. Slide in from top, auto-dismiss after 3s.
+**Goal:** Player can earn enough Gems from gameplay alone to buy skins and boosters. No purchase path needed.
 
-**Requires:** Task 11 (UIEvent.DistrictLost), Task 08 (UIEvent.BattleItemDropped), Task 05 (UIEvent.LevelUp)
+**Requires:** Task 51 (IAP disabled), Task 43 (Achievements), Task 44 (Daily Missions), Task 17 (Boss Districts)
 
-**Files:** new `ToastManager.cs`, new `ToastItem.cs`
+**Files:** modify `Constants.cs`, modify `AchievementManager.cs`, modify `DailyMissionManager.cs`, modify `BattleManager.cs`
 
 **Steps:**
 
-1. Create `Assets/Scripts/UI/ToastManager.cs`:
+1. Add Gem reward constants to `Constants.cs`:
 ```csharp
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-using TMPro;
+// Gem income (no IAP)
+public const int GEMS_DAILY_LOGIN      = 5;   // already exists, verify
+public const int GEMS_BOSS_KILL        = 10;
+public const int GEMS_ACHIEVEMENT      = 5;   // per achievement completed
+public const int GEMS_DAILY_MISSION    = 3;   // per mission completed
+public const int GEMS_FIRST_DISTRICT   = 15;  // one-time tutorial reward
+public const int GEMS_FULL_MAP_CLEAR   = 50;  // one-time reward
+```
 
-public class ToastManager : MonoBehaviour
+2. In `BattleManager.EndBattle()`, award Gems for boss kills:
+```csharp
+if (playerWon)
 {
-    public static ToastManager Instance { get; private set; }
-
-    [Header("Config")]
-    public GameObject ToastPrefab;
-    public Transform ToastContainer;  // vertical layout group at top of screen
-    public int MaxVisible = 3;
-    public float DisplayDuration = 3f;
-
-    readonly Queue<GameObject> _active = new();
-
-    void Awake()
+    var district = TerritoryManager.Instance?.GetDistrict(PendingDistrictId);
+    if (district != null && district.IsBoss)
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-    }
-
-    void OnEnable()
-    {
-        UIEventBus.On(UIEvent.DistrictLost, d => ShowToast($"⚠️ District lost: {((District)d).Name}!"));
-        UIEventBus.On(UIEvent.BattleItemDropped, d => ShowToast($"🎁 Gear drop: {((EquipmentData)d).ItemName}!"));
-        UIEventBus.On(UIEvent.LevelUp, d => {
-            var f = (FlyInstance)d;
-            ShowToast($"⬆️ {f.Role} levelled up to {f.Level}!");
-        });
-    }
-
-    public void ShowToast(string message)
-    {
-        if (ToastPrefab == null || ToastContainer == null) return;
-        var go = Instantiate(ToastPrefab, ToastContainer);
-        var label = go.GetComponentInChildren<TextMeshProUGUI>();
-        if (label) label.text = message;
-        _active.Enqueue(go);
-
-        // Remove excess
-        while (_active.Count > MaxVisible)
-        {
-            var old = _active.Dequeue();
-            if (old) Destroy(old);
-        }
-
-        StartCoroutine(DismissAfterDelay(go));
-    }
-
-    IEnumerator DismissAfterDelay(GameObject go)
-    {
-        yield return new WaitForSeconds(DisplayDuration);
-        if (go != null)
-        {
-            // Fade out via CanvasGroup
-            var cg = go.GetComponent<CanvasGroup>();
-            if (cg != null)
-            {
-                float t = 0.3f;
-                while (t > 0)
-                {
-                    t -= Time.deltaTime;
-                    cg.alpha = t / 0.3f;
-                    yield return null;
-                }
-            }
-            Destroy(go);
-        }
+        ResourceManager.Instance?.AddGems(Constants.GEMS_BOSS_KILL);
+        ToastManager.Instance?.ShowToast($"💎 +{Constants.GEMS_BOSS_KILL} Gems (Boss defeated!)");
     }
 }
 ```
 
-2. Create toast prefab: a horizontal layout with Image (icon area) + TMP label + CanvasGroup for fade:
-```powershell
-.\unity-cmd.ps1 '[
-  {"type": "create", "path": "ToastPrefab", "components": ["CanvasGroup", "HorizontalLayoutGroup", "Image"]},
-  {"type": "create", "path": "ToastPrefab/Label", "components": ["TextMeshProUGUI"]},
-  {"type": "save-prefab", "path": "Assets/Prefabs/UI/ToastPrefab.prefab", "source": "ToastPrefab"}
-]'
+3. In `AchievementManager.cs`, award Gems on achievement unlock:
+```csharp
+void UnlockAchievement(string id)
+{
+    // ... existing unlock logic
+    ResourceManager.Instance?.AddGems(Constants.GEMS_ACHIEVEMENT);
+    ToastManager.Instance?.ShowToast($"🏆 Achievement unlocked! +{Constants.GEMS_ACHIEVEMENT} 💎");
+}
 ```
 
-3. Add `ToastManager` + `ToastContainer` (VerticalLayoutGroup, top-anchored) to MainMap canvas:
-```powershell
-.\unity-cmd.ps1 '[
-  {"type": "create", "path": "HUD/ToastContainer", "components": ["VerticalLayoutGroup"]},
-  {"type": "create", "path": "HUD/ToastManager", "components": ["ToastManager"]},
-  {"type": "save-scene"}
-]'
+4. In `DailyMissionManager.cs`, award Gems on mission complete:
+```csharp
+void CompleteMission(string missionId)
+{
+    // ... existing complete logic
+    ResourceManager.Instance?.AddGems(Constants.GEMS_DAILY_MISSION);
+}
 ```
-Wire `ToastPrefab` and `ToastContainer` references in Inspector.
 
-4. Test: win a battle that drops gear → verify toast appears at top. Lose a district to enemy AI (set interval to 10s) → verify warning toast.
+5. Verify skin prices are achievable. Check `Constants.cs` for skin costs — a player who plays daily should afford 1 skin per week. Rough math: 5 (login) + 3×3 (missions) + 5 (achievement avg) = ~19 Gems/day. If skins cost 100 Gems, that's ~5 days. Adjust if needed.
+
+6. Verify `ResourceHUD` shows Gems. Verify Gems persist through save/load.
+
+7. Test: fresh save → play through tutorial → kill boss → complete achievement → verify Gems accumulate → buy a skin → verify it works.
 
 ---
 
-### TASK 25 — Settings Screen
+### TASK 53 — Stub Removal Audit
 
-**Goal:** Accessible from MainMap HUD. Controls: SFX volume slider, Music volume slider, Reset Progress button (with confirmation), Credits text.
+**Goal:** Find every reflection-based stub and mock. Replace with either real logic or a clean no-op that won't crash on device.
 
-**Requires:** Task 21 (AudioManager with SFX), Task 07 (SaveSystem)
+**Requires:** Task 51 (FeatureFlags)
 
-**Files:** new `SettingsScreenController.cs`, modify `AudioManager.cs`
+**Files:** multiple — audit-driven
 
 **Steps:**
 
-1. Create `Assets/Scripts/UI/SettingsScreenController.cs`:
+1. Search for all reflection-based stubs:
+```powershell
+grep -rn "reflection\|GetType()\|Invoke(\|MethodInfo\|Assembly.Load\|Type.GetType" Assets/Scripts/ --include="*.cs"
+```
+
+2. Search for TODO/STUB/MOCK markers:
+```powershell
+grep -rn "TODO\|STUB\|MOCK\|HACK\|FIXME\|NotImplemented\|throw new" Assets/Scripts/ --include="*.cs"
+```
+
+3. For each stub found, decide:
+   - **SDK stub** (AdMob, Firebase, IAP, Play Games) → wrap in `FeatureFlags` check, return graceful no-op
+   - **Logic stub** (unfinished game logic) → implement for real or remove the feature entry point
+   - **Test stub** (debug helpers) → wrap in `#if UNITY_EDITOR` or remove
+
+4. For SDK stubs specifically, ensure the pattern is:
 ```csharp
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-public class SettingsScreenController : MonoBehaviour
+public void SomeSDKCall()
 {
-    [Header("Audio")]
-    public Slider SFXSlider;
-    public Slider MusicSlider;
-
-    [Header("Reset")]
-    public Button ResetButton;
-    public GameObject ConfirmPanel;
-    public Button ConfirmYes;
-    public Button ConfirmNo;
-
-    [Header("Navigation")]
-    public Button BackButton;
-
-    void Start()
+    if (!FeatureFlags.RELEVANT_FLAG)
     {
-        SFXSlider.value = AudioManager.Instance?.SFXVolume ?? 1f;
-        MusicSlider.value = AudioManager.Instance?.MusicVolume ?? 1f;
-
-        SFXSlider.onValueChanged.AddListener(v => AudioManager.Instance?.SetSFXVolume(v));
-        MusicSlider.onValueChanged.AddListener(v => AudioManager.Instance?.SetMusicVolume(v));
-
-        ResetButton.onClick.AddListener(() => ConfirmPanel?.SetActive(true));
-        ConfirmYes.onClick.AddListener(OnResetConfirmed);
-        ConfirmNo.onClick.AddListener(() => ConfirmPanel?.SetActive(false));
-        BackButton.onClick.AddListener(() => GameManager.Instance?.LoadScene("MainMap"));
-
-        ConfirmPanel?.SetActive(false);
+        Debug.Log("[Manager] Feature disabled, skipping.");
+        return;
     }
-
-    void OnResetConfirmed()
-    {
-        SaveSystem.Instance?.DeleteSave();
-        // Reload from scratch
-        GameManager.Instance?.LoadScene("Bootstrap");
-    }
+    // Real SDK call here (for when SDK is integrated later)
 }
 ```
 
-2. Add volume control methods to `AudioManager.cs`:
+5. Verify no stub throws an exception at runtime. Every code path must either work or silently skip.
+
+6. Test: play full game loop with no exceptions in console. Check `adb logcat` for any reflection errors.
+
+---
+
+### TASK 54 — Scene Flow Audit
+
+**Goal:** Every scene transition works. No dead ends. Every back button returns somewhere. Player can't get stuck.
+
+**Requires:** All previous tasks
+
+**Files:** audit across all scene controllers
+
+**Steps:**
+
+1. Map all scenes and transitions. Expected flow:
+```
+Bootstrap → MainMap ↔ Battle
+                    ↔ ClanScreen
+                    ↔ Settings
+                    ↔ BossRush
+```
+Verify each arrow works in both directions.
+
+2. Check every scene controller for a back/return path:
+```powershell
+grep -rn "LoadScene\|SceneManager" Assets/Scripts/ --include="*.cs"
+```
+Every scene except Bootstrap must have a way back to MainMap.
+
+3. Check for missing null guards on scene entry — if a manager is missing (e.g. player somehow loads Battle directly), it should redirect to Bootstrap:
 ```csharp
-public float SFXVolume { get; private set; } = 1f;
-public float MusicVolume { get; private set; } = 1f;
-
-public void SetSFXVolume(float v)
-{
-    SFXVolume = Mathf.Clamp01(v);
-    // Apply to all SFX AudioSources
-    PlayerPrefs.SetFloat("SFXVolume", SFXVolume);
-}
-
-public void SetMusicVolume(float v)
-{
-    MusicVolume = Mathf.Clamp01(v);
-    if (_musicSource) _musicSource.volume = MusicVolume;
-    PlayerPrefs.SetFloat("MusicVolume", MusicVolume);
-}
-
 void Start()
 {
-    SFXVolume = PlayerPrefs.GetFloat("SFXVolume", 1f);
-    MusicVolume = PlayerPrefs.GetFloat("MusicVolume", 1f);
+    if (GameManager.Instance == null)
+    {
+        Debug.LogError("[SceneController] No GameManager — redirecting to Bootstrap.");
+        SceneManager.LoadScene("Bootstrap");
+        return;
+    }
 }
 ```
+Add this pattern to: `BattleSceneController`, `ClanScreenController`, `SettingsScreenController`, `BossRushController`, any other scene entry points.
 
-3. Add `DeleteSave()` to `SaveSystem.cs`:
+4. Verify all scenes are in Build Settings:
+```powershell
+.\unity-cmd.ps1 '{"type": "build-settings"}'
+```
+Expected: Bootstrap (0), MainMap (1), Battle (2), ClanScreen (3), Settings (4), any others.
+
+5. Test each transition manually:
+   - MainMap → tap district → Attack → Battle → win → MainMap
+   - MainMap → tap district → Attack → Battle → lose → MainMap
+   - MainMap → Clan button → ClanScreen → Back → MainMap
+   - MainMap → Settings → Back → MainMap
+   - MainMap → Settings → Reset → Bootstrap → Tutorial → MainMap
+   - Cold start (kill app) → Bootstrap → MainMap (with saved state)
+
+6. Fix any dead ends or crashes found.
+
+---
+
+### TASK 55 — Save System Stress Test
+
+**Goal:** Save system handles edge cases: corrupt files, fresh install, mid-battle quit, version upgrades.
+
+**Requires:** Task 07 (SaveSystem)
+
+**Files:** modify `SaveSystem.cs`
+
+**Steps:**
+
+1. Add corrupt save recovery:
 ```csharp
-public void DeleteSave()
+public static void Load()
 {
     string path = Application.persistentDataPath + "/save.json";
-    if (System.IO.File.Exists(path))
+    if (!System.IO.File.Exists(path))
+    {
+        Debug.Log("[SaveSystem] No save file — starting fresh.");
+        CreateDefaultSave();
+        return;
+    }
+
+    try
+    {
+        string json = System.IO.File.ReadAllText(path);
+        var file = JsonUtility.FromJson<SaveFile>(json);
+        if (file == null) throw new System.Exception("Deserialized to null");
+        ApplySaveFile(file);
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogError($"[SaveSystem] Corrupt save: {e.Message}. Backing up and starting fresh.");
+        // Backup corrupt file
+        string backup = path + ".corrupt." + System.DateTime.Now.Ticks;
+        System.IO.File.Copy(path, backup);
         System.IO.File.Delete(path);
-    Debug.Log("[SaveSystem] Save deleted.");
+        CreateDefaultSave();
+    }
 }
 ```
 
-4. Create `Assets/Scenes/Settings.unity` and build UI:
+2. Add save version field for future migration:
+```csharp
+[System.Serializable]
+public class SaveFile
+{
+    public int SaveVersion = 1;
+    // ... existing fields
+}
+
+// In Load(), after deserialize:
+if (file.SaveVersion < CURRENT_SAVE_VERSION)
+    MigrateSave(file);
+```
+
+3. Add auto-save on key events to prevent data loss:
+```csharp
+// Call Save() after:
+// - Battle complete (win or lose)
+// - District claimed/lost
+// - Gear equipped
+// - Fly trained
+// - Settings changed
+// - OnApplicationPause(true)
+// - OnApplicationQuit()
+```
+
+4. In `GameManager.cs`:
+```csharp
+void OnApplicationPause(bool paused)
+{
+    if (paused) SaveSystem.Save();
+}
+
+void OnApplicationQuit()
+{
+    SaveSystem.Save();
+}
+```
+
+5. Test scenarios:
+   - Delete save file → launch → verify clean start, no crash
+   - Replace save file with `{garbage}` → launch → verify backup created, clean start
+   - Win battle → force-kill app (alt+F4 / swipe away) → relaunch → verify district saved
+   - Play for 5 min → check save file size is reasonable (< 100KB)
+
+---
+
+### TASK 56 — UI/UX Pass
+
+**Goal:** No overlapping text, all buttons reachable on mobile, touch targets ≥ 48dp, safe area respected.
+
+**Requires:** All UI tasks complete
+
+**Files:** modify various UI scripts and scene objects
+
+**Steps:**
+
+1. Add safe area handler to all canvases. Create `Assets/Scripts/UI/SafeAreaHandler.cs`:
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(RectTransform))]
+public class SafeAreaHandler : MonoBehaviour
+{
+    RectTransform _rect;
+
+    void Awake()
+    {
+        _rect = GetComponent<RectTransform>();
+        ApplySafeArea();
+    }
+
+    void ApplySafeArea()
+    {
+        var safeArea = Screen.safeArea;
+        var min = safeArea.position;
+        var max = safeArea.position + safeArea.size;
+        min.x /= Screen.width;
+        min.y /= Screen.height;
+        max.x /= Screen.width;
+        max.y /= Screen.height;
+
+        _rect.anchorMin = min;
+        _rect.anchorMax = max;
+    }
+}
+```
+Attach to the root content panel (child of Canvas) in every scene.
+
+2. Audit touch target sizes. Minimum 48×48dp (approximately 48×48 Unity units on a 160dpi baseline). Check:
+   - All buttons in DistrictInfoPanel
+   - Fly cards in selection screen and Clan Screen
+   - Settings sliders
+   - Map district tiles
+   - Toast dismiss areas
+
+3. Check text scaling. Set TextMeshPro auto-size with min 12pt on all labels that might overflow:
+```csharp
+label.enableAutoSizing = true;
+label.fontSizeMin = 12;
+label.fontSizeMax = 24;
+```
+
+4. Test at multiple resolutions:
 ```powershell
-.\unity-cmd.ps1 '[
-  {"type": "create-scene", "path": "Assets/Scenes/Settings.unity"},
-  {"type": "create", "path": "Canvas/SFXLabel", "components": ["TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/SFXSlider", "components": ["Slider"]},
-  {"type": "create", "path": "Canvas/MusicLabel", "components": ["TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/MusicSlider", "components": ["Slider"]},
-  {"type": "create", "path": "Canvas/ResetButton", "components": ["Button", "TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/ConfirmPanel", "components": ["Image"]},
-  {"type": "create", "path": "Canvas/ConfirmPanel/YesButton", "components": ["Button", "TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/ConfirmPanel/NoButton", "components": ["Button", "TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/BackButton", "components": ["Button", "TextMeshProUGUI"]},
-  {"type": "create", "path": "Canvas/Credits", "components": ["TextMeshProUGUI"]},
-  {"type": "create", "path": "Controller", "components": ["SettingsScreenController"]},
-  {"type": "save-scene"}
-]'
+# In Unity: Game view → add custom resolutions:
+# 1080x1920 (standard phone)
+# 1080x2400 (tall phone, Samsung S21+)
+# 720x1280 (low-end)
+# 1200x1920 (tablet)
 ```
+Verify nothing overlaps or gets cut off at any resolution.
 
-5. Add Settings scene to Build Settings. Add ⚙️ button to MainMap HUD → `GameManager.Instance.LoadScene("Settings")`.
+5. Verify panel layering — no panel hidden behind another. Check Canvas sort orders.
 
-6. Test: open settings → drag sliders → verify volume changes. Tap Reset → confirm → verify game restarts from tutorial.
+6. Test: screenshot at each resolution → review for clipping, overlap, unreachable buttons.
 
 ---
 
-### TASK 26 — Battle Fly Selection Screen
+### TASK 57 — Balance Tuning Pass
 
-**Goal:** Before battle starts, player picks which flies (up to 5) to send. Shows fly cards with role, level, HP, equipped gear.
+**Goal:** Single pass through all Constants to make the game feel right. Difficulty ramps smoothly, economy doesn't stall or flood.
 
-**Requires:** Task 03 (battle flow), Task 08 (gear), Task 10 (FlyRoleData)
+**Requires:** All gameplay tasks
 
-**Files:** new `FlySelectionUI.cs`, modify `DistrictInfoPanel.cs`, modify `BattleManager.cs`
+**Files:** modify `Constants.cs`, modify `TerritoryManager.cs`
 
 **Steps:**
 
-1. Create `Assets/Scripts/UI/FlySelectionUI.cs`:
+1. Review and set all balance constants in one file. Create or update `Constants.cs`:
 ```csharp
-using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-public class FlySelectionUI : MonoBehaviour
+public static class Constants
 {
-    public static FlySelectionUI Instance { get; private set; }
+    // --- Battle ---
+    public const int BATTLE_SLOTS = 5;
+    public const int BOSS_BATTLE_SLOTS = 7;
+    public const float BATTLE_ROUND_DELAY = 0.8f;  // seconds between rounds
+    public const int XP_WIN = 50;
+    public const int XP_LOSE = 10;
 
-    [Header("UI")]
-    public GameObject Panel;
-    public Transform FlyCardContainer;  // vertical scroll content
-    public GameObject FlyCardPrefab;
-    public Button ConfirmButton;
-    public Button CancelButton;
-    public TextMeshProUGUI SelectedCountText;
+    // --- Economy ---
+    public const int INCOME_PER_DISTRICT_PER_MIN = 5;
+    public const int BATTLE_WIN_COINS = 20;
+    public const int TRAINING_COST = 50;
+    public const int TRAINING_XP = 30;
+    public const int GEAR_UPGRADE_COST = 100;
+    public const float GEAR_DROP_CHANCE = 0.4f;
+    public const float BOSS_GEAR_DROP_CHANCE = 1.0f;
 
-    readonly List<FlyInstance> _selected = new();
-    System.Action<List<FlyInstance>> _onConfirm;
+    // --- Gems (no IAP) ---
+    public const int GEMS_DAILY_LOGIN = 5;
+    public const int GEMS_BOSS_KILL = 10;
+    public const int GEMS_ACHIEVEMENT = 5;
+    public const int GEMS_DAILY_MISSION = 3;
+    public const int SKIN_COST_GEMS = 80;
 
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-        Panel?.SetActive(false);
-        ConfirmButton?.onClick.AddListener(OnConfirm);
-        CancelButton?.onClick.AddListener(OnCancel);
-    }
+    // --- Difficulty ---
+    public const int RING0_DIFFICULTY = 1;
+    public const int RING1_DIFFICULTY = 3;
+    public const int RING2_DIFFICULTY = 5;
+    public const int RING3_DIFFICULTY = 7;  // 7x7 map
+    public const int BOSS_DIFFICULTY = 6;
 
-    public void Show(System.Action<List<FlyInstance>> onConfirm)
-    {
-        _onConfirm = onConfirm;
-        _selected.Clear();
-        Panel?.SetActive(true);
+    // --- Enemy AI ---
+    public const float ENEMY_ATTACK_INTERVAL = 300f;  // 5 min
+    public const float ENEMY_CHANCE_VS_NEUTRAL = 0.3f;
+    public const float ENEMY_CHANCE_VS_PLAYER = 0.15f;
 
-        // Clear old cards
-        foreach (Transform child in FlyCardContainer)
-            Destroy(child.gameObject);
-
-        // Build fly cards
-        var flies = ClanManager.Instance?.GetAllFlies()
-            .Where(f => f.IsAlive)
-            .OrderByDescending(f => f.Level)
-            .ToList();
-
-        if (flies == null) return;
-        foreach (var fly in flies)
-        {
-            var card = Instantiate(FlyCardPrefab, FlyCardContainer);
-            var label = card.GetComponentInChildren<TextMeshProUGUI>();
-            var equippedItem = InventoryManager.Instance?.GetEquippedItem(fly.InstanceId);
-            string gearText = equippedItem != null ? $" [{equippedItem}]" : "";
-            if (label) label.text = $"{fly.Role} Lv{fly.Level} | HP:{fly.MaxHealth} ATK:{fly.Attack}{gearText}";
-
-            var toggle = card.GetComponentInChildren<Toggle>();
-            if (toggle)
-            {
-                var capturedFly = fly;
-                toggle.isOn = false;
-                toggle.onValueChanged.AddListener(isOn =>
-                {
-                    if (isOn && _selected.Count < Constants.BATTLE_SLOTS)
-                        _selected.Add(capturedFly);
-                    else if (isOn)
-                        toggle.isOn = false; // at max
-                    else
-                        _selected.Remove(capturedFly);
-                    UpdateCountText();
-                });
-            }
-        }
-        UpdateCountText();
-    }
-
-    void UpdateCountText()
-    {
-        if (SelectedCountText)
-            SelectedCountText.text = $"{_selected.Count}/{Constants.BATTLE_SLOTS} selected";
-        if (ConfirmButton)
-            ConfirmButton.interactable = _selected.Count > 0;
-    }
-
-    void OnConfirm()
-    {
-        Panel?.SetActive(false);
-        _onConfirm?.Invoke(new List<FlyInstance>(_selected));
-    }
-
-    void OnCancel()
-    {
-        Panel?.SetActive(false);
-        _selected.Clear();
-    }
+    // --- Leveling ---
+    public const int XP_PER_LEVEL = 100;
+    public const float STAT_ATTACK_GROWTH = 1.1f;   // per level
+    public const float STAT_DEFENSE_GROWTH = 1.1f;
+    public const float STAT_HEALTH_GROWTH = 1.15f;
 }
 ```
 
-2. Create FlyCard prefab with Toggle + Label:
+2. Replace all hardcoded magic numbers in the codebase with these constants:
 ```powershell
-.\unity-cmd.ps1 '[
-  {"type": "create", "path": "FlyCardPrefab", "components": ["Toggle", "HorizontalLayoutGroup", "Image"]},
-  {"type": "create", "path": "FlyCardPrefab/Label", "components": ["TextMeshProUGUI"]},
-  {"type": "save-prefab", "path": "Assets/Prefabs/UI/FlyCardPrefab.prefab", "source": "FlyCardPrefab"}
-]'
+# Find hardcoded numbers that should be constants:
+grep -rn "0\.4f\|300f\|0\.3f\|0\.15f\| 50;\| 100;\| 5 \*\|1\.1f\|1\.15f" Assets/Scripts/ --include="*.cs"
 ```
+Replace each match with the corresponding `Constants.X` reference.
 
-3. Add `GetAllFlies()` to `ClanManager.cs` if missing:
-```csharp
-public List<FlyInstance> GetAllFlies() => new(_flies);
-```
+3. Verify the progression feels right. Target session:
+   - Minutes 0-2: tutorial, claim center (free)
+   - Minutes 2-5: fight 1-2 Ring 1 districts, first level up
+   - Minutes 5-10: explore Ring 1, get first gear drop
+   - Minutes 10-20: push into Ring 2, need to train flies
+   - Minutes 20-30: tackle first boss, get legendary gear
+   - After 30 min: player has 5-8 districts, level 3-4 flies, 1-2 gear pieces
 
-4. Modify `DistrictInfoPanel.OnAttack()` and `OnClaim()` to go through selection first:
-```csharp
-void OnAttack()
-{
-    if (_current == null) return;
-    FlySelectionUI.Instance?.Show(selectedFlies =>
-    {
-        var enemies = GenerateEnemyFlies(_current.DifficultyLevel);
-        BattleManager.Instance?.PrepareBattle(_current.Id, enemies, selectedFlies);
-        GameManager.Instance?.LoadScene("Battle");
-    });
-}
-
-void OnClaim()
-{
-    if (_current == null) return;
-    FlySelectionUI.Instance?.Show(selectedFlies =>
-    {
-        var enemies = GenerateEnemyFlies(_current.DifficultyLevel);
-        BattleManager.Instance?.PrepareBattle(_current.Id, enemies, selectedFlies);
-        GameManager.Instance?.LoadScene("Battle");
-    });
-}
-```
-
-5. Update `BattleManager.PrepareBattle()` to accept player fly list:
-```csharp
-public void PrepareBattle(string districtId, List<FlyInstance> enemies, List<FlyInstance> playerFlies)
-{
-    PendingDistrictId = districtId;
-    EnemySlots = enemies;
-    PlayerSlots = playerFlies;
-}
-```
-
-6. Add `FlySelectionUI` panel to MainMap scene. Wire prefab and container references.
-
-7. Test: tap enemy district → fly selection appears → pick 3 flies → confirm → battle loads with those 3 flies vs 5 enemies.
+4. If pacing feels off, adjust the constants and re-test. Document final values in comments.
 
 ---
 
-### TASK 27 — Gear Equip UI in Clan Screen
+### TASK 58 — Placeholder Art Audit
 
-**Goal:** In Clan Screen, player taps a fly → sees gear slot → taps slot → picks from owned unequipped gear → equips it.
+**Goal:** List every placeholder asset in the game. Output a manifest so art can be commissioned or created.
 
-**Requires:** Task 15 (Clan Screen), Task 08 (InventoryManager)
+**Requires:** Task 18-21 (art tasks, which used procedural/placeholder art)
 
-**Files:** modify `ClanScreenController.cs`, new `GearEquipPopup.cs`
+**Files:** new `ART_MANIFEST.md` in project root
 
 **Steps:**
 
-1. Create `Assets/Scripts/UI/GearEquipPopup.cs`:
-```csharp
-using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-public class GearEquipPopup : MonoBehaviour
-{
-    public static GearEquipPopup Instance { get; private set; }
-
-    public GameObject Panel;
-    public Transform ItemListContainer;
-    public GameObject ItemButtonPrefab;
-    public Button CloseButton;
-    public TextMeshProUGUI FlyNameLabel;
-
-    string _targetFlyId;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-        Panel?.SetActive(false);
-        CloseButton?.onClick.AddListener(() => Panel?.SetActive(false));
-    }
-
-    public void Show(FlyInstance fly)
-    {
-        _targetFlyId = fly.InstanceId;
-        if (FlyNameLabel) FlyNameLabel.text = $"Equip gear for {fly.Role} Lv{fly.Level}";
-        Panel?.SetActive(true);
-
-        // Clear old items
-        foreach (Transform child in ItemListContainer)
-            Destroy(child.gameObject);
-
-        // Show owned items
-        var inv = InventoryManager.Instance;
-        if (inv == null) return;
-        var owned = inv.GetOwnedItems();
-
-        foreach (var itemId in owned.Distinct())
-        {
-            var data = inv.GetEquipmentData(itemId);
-            if (data == null) continue;
-
-            var btn = Instantiate(ItemButtonPrefab, ItemListContainer);
-            var label = btn.GetComponentInChildren<TextMeshProUGUI>();
-            if (label) label.text = $"{data.ItemName} | ATK+{data.AttackBonus} DEF+{data.DefenseBonus} SPD+{data.SpeedBonus}";
-
-            var capturedId = itemId;
-            btn.GetComponent<Button>()?.onClick.AddListener(() =>
-            {
-                inv.EquipItem(_targetFlyId, capturedId);
-                Panel?.SetActive(false);
-                // Refresh clan screen
-                ClanScreenController.Instance?.RefreshFlyList();
-            });
-        }
-    }
-}
+1. Scan for placeholder markers in code:
+```powershell
+grep -rn "\[POO\]\|placeholder\|TODO.*art\|TODO.*sprite\|grey\|gray.*square\|procedural\|Texture2D(1" Assets/Scripts/ --include="*.cs"
 ```
 
-2. In `ClanScreenController.cs`, add equip button per fly card:
-```csharp
-public static ClanScreenController Instance { get; private set; }
-
-void Awake()
-{
-    if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-    Instance = this;
-}
-
-// In fly card creation loop, add:
-var equipBtn = card.transform.Find("EquipButton")?.GetComponent<Button>();
-var capturedFly = fly;
-equipBtn?.onClick.AddListener(() => GearEquipPopup.Instance?.Show(capturedFly));
-
-// Show currently equipped item on card:
-var equipped = InventoryManager.Instance?.GetEquippedItem(fly.InstanceId);
-var gearLabel = card.transform.Find("GearLabel")?.GetComponent<TextMeshProUGUI>();
-if (gearLabel) gearLabel.text = equipped != null
-    ? $"⚔️ {InventoryManager.Instance.GetEquipmentData(equipped)?.ItemName ?? equipped}"
-    : "No gear";
-
-public void RefreshFlyList()
-{
-    // Re-populate fly list — call existing populate method
-}
+2. Scan for procedurally generated textures (likely placeholders):
+```powershell
+grep -rn "new Texture2D\|SetPixel\|Apply()\|CreateSprite" Assets/Scripts/ --include="*.cs"
 ```
 
-3. Add `GearEquipPopup` to ClanScreen scene. Wire prefab and container.
+3. Check all sprite references in scenes:
+```powershell
+.\unity-cmd.ps1 '{"type": "inspect", "path": "", "lens": "sprites"}'
+```
 
-4. Test: open Clan Screen → tap equip on a fly → select Poo Thrower → verify gear label updates → enter battle → verify Attack bonus applied.
+4. Create `ART_MANIFEST.md`:
+```markdown
+# Art Asset Manifest — Fly Life
+
+## Sprites Needed
+
+### District Tiles
+| Asset | Current State | Size | Notes |
+|---|---|---|---|
+| tile_park.png | Procedural green square | 128×128 | Ring 0, garden theme |
+| tile_urban.png | Procedural grey square | 128×128 | Ring 1, city theme |
+| tile_industrial.png | Procedural dark square | 128×128 | Ring 2, factory theme |
+| tile_boss.png | Procedural red square | 128×128 | Corner boss districts |
+
+### Fly Characters
+| Asset | Current State | Size | Notes |
+|---|---|---|---|
+| fly_scout_idle.png | Procedural | 64×64 | Thin, fast-looking |
+| fly_soldier_idle.png | Procedural | 64×64 | Bulky, armored |
+| fly_worker_idle.png | Procedural | 64×64 | Round, healer look |
+| fly_*_battle.png | Same as idle | 64×64 | Battle stance variant |
+
+### Poo Types (7)
+| Asset | Current | Size |
+|---|---|---|
+| poo_dog.png | Brown circle | 32×32 |
+| poo_bird.png | Brown circle | 32×32 |
+| ... (all 7 types) | | |
+
+### UI
+| Asset | Current | Notes |
+|---|---|---|
+| icon_poocoin.png | 💰 emoji | Currency icon |
+| icon_gem.png | 💎 emoji | Currency icon |
+| btn_attack.png | Default Unity button | Red theme |
+| btn_claim.png | Default Unity button | Green theme |
+| app_icon.png | None | 512×512, Play Store |
+
+### Audio
+| Asset | Current | Duration |
+|---|---|---|
+| music_menu.ogg | None/placeholder | 30-60s loop |
+| music_battle.ogg | None/placeholder | 30-60s loop |
+| sfx_hit.ogg | Placeholder beep | <1s |
+| sfx_levelup.ogg | Placeholder beep | <1s |
+| sfx_capture.ogg | Placeholder beep | <1s |
+| sfx_button.ogg | Placeholder beep | <1s |
+```
+
+5. Count totals and estimate effort at bottom of manifest.
 
 ---
 
-### TASK 28 — Fly Training (Spend PooCoins for XP)
+### TASK 59 — Error Handling Pass
 
-**Goal:** In Clan Screen, "Train" button on each fly. Costs 50 PooCoins, awards 30 XP to that fly.
+**Goal:** No NullReferenceExceptions in any code path. Every manager singleton access is guarded. Every UI element is null-checked.
 
-**Requires:** Task 15 (Clan Screen), Task 05 (fly XP), Task 06 (PooCoins)
+**Requires:** All previous tasks
 
-**Files:** modify `ClanScreenController.cs`, modify `ClanManager.cs`
+**Files:** audit across all scripts
 
 **Steps:**
 
-1. Add constants:
-```csharp
-// In Constants.cs
-public const int TRAINING_COST = 50;    // PooCoins
-public const int TRAINING_XP   = 30;
+1. Find all unguarded singleton access:
+```powershell
+grep -rn "\.Instance\." Assets/Scripts/ --include="*.cs" | grep -v "?.\|!= null\|== null"
 ```
+Every result should be changed to use `?.` or a null check.
 
-2. Add training method to `ClanManager.cs`:
+2. Find all unguarded UI element access:
+```powershell
+grep -rn "\.text = \|\.SetActive\|\.gameObject" Assets/Scripts/ --include="*.cs" | grep -v "?\.\|if ("
+```
+Wrap in null checks or use `?.` operator.
+
+3. Add try-catch to critical startup paths:
 ```csharp
-public bool TrainFly(string flyId)
+// In GameManager.Start() or similar:
+try
 {
-    var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
-    if (fly == null) return false;
-    if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendPooCoins(Constants.TRAINING_COST))
-        return false;
-
-    fly.XP += Constants.TRAINING_XP;
-    int newLevel = Mathf.FloorToInt(fly.XP / 100f) + 1;
-    if (newLevel > fly.Level)
-    {
-        fly.Level = newLevel;
-        fly.Attack    = Mathf.RoundToInt(fly.Attack  * 1.1f);
-        fly.Defense   = Mathf.RoundToInt(fly.Defense * 1.1f);
-        fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * 1.15f);
-        fly.CurrentHealth = fly.MaxHealth;
-        UIEventBus.Emit(UIEvent.LevelUp, fly);
-    }
-    Debug.Log($"[ClanManager] Trained {fly.Role}: +{Constants.TRAINING_XP} XP (now {fly.XP})");
-    return true;
+    SaveSystem.Load();
+}
+catch (System.Exception e)
+{
+    Debug.LogError($"[GameManager] Save load failed: {e.Message}");
+    // Continue with defaults
 }
 ```
 
-3. In `ClanScreenController.cs`, add Train button per fly card:
+4. Verify every coroutine has a null guard on its dependencies at the top.
+
+5. Add `[SerializeField]` validation — log warnings for unassigned Inspector fields:
 ```csharp
-var trainBtn = card.transform.Find("TrainButton")?.GetComponent<Button>();
-var capturedFly = fly;
-trainBtn?.onClick.AddListener(() =>
+void OnValidate()
 {
-    if (ClanManager.Instance?.TrainFly(capturedFly.InstanceId) == true)
-        RefreshFlyList();
-    else
-        ToastManager.Instance?.ShowToast("Not enough PooCoins!");
-});
-
-// Show cost on button label
-var trainLabel = trainBtn?.GetComponentInChildren<TextMeshProUGUI>();
-if (trainLabel) trainLabel.text = $"Train ({Constants.TRAINING_COST} 💰)";
+    if (SomeRequiredField == null)
+        Debug.LogWarning($"[{GetType().Name}] SomeRequiredField is not assigned!", this);
+}
 ```
+Add to key MonoBehaviours: `BattleSceneController`, `DistrictInfoPanel`, `ClanScreenController`, `MapManager`.
 
-4. Test: earn 100+ PooCoins → open Clan Screen → train a fly twice → verify XP increases and level up triggers if threshold crossed.
+6. Test: play full loop → check console for zero errors/warnings (except expected debug logs).
 
 ---
 
-### TASK 29 — Gear Upgrade (Spend PooCoins for +1 Stats)
+### TASK 60 — Android Device Build & Test
 
-**Goal:** In Gear Equip popup, "Upgrade" button on equipped gear. Costs 100 PooCoins, permanently adds +1 to the gear's primary stat.
+**Goal:** Signed APK runs on 2+ real devices without crashes. Full game loop works on touch input.
 
-**Requires:** Task 27 (GearEquipPopup), Task 08 (InventoryManager)
+**Requires:** All Tasks 51-59
 
-**Files:** modify `InventoryManager.cs`, modify `GearEquipPopup.cs`
-
-**Steps:**
-
-1. Add upgrade tracking to `InventoryManager.cs`:
-```csharp
-Dictionary<string, int> _upgradeLevels = new(); // itemId → upgrade count
-
-public int GetUpgradeLevel(string itemId) =>
-    _upgradeLevels.TryGetValue(itemId, out var lvl) ? lvl : 0;
-
-public bool UpgradeItem(string itemId)
-{
-    if (!_ownedItemIds.Contains(itemId)) return false;
-    int cost = Constants.GEAR_UPGRADE_COST;
-    if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendPooCoins(cost))
-        return false;
-
-    _upgradeLevels.TryGetValue(itemId, out int current);
-    _upgradeLevels[itemId] = current + 1;
-    Debug.Log($"[Inventory] Upgraded {itemId} to +{current + 1}");
-    return true;
-}
-```
-
-2. Update `ApplyGearStats` to include upgrade bonuses:
-```csharp
-public void ApplyGearStats(FlyInstance fly)
-{
-    var itemId = GetEquippedItem(fly.InstanceId);
-    if (itemId == null) return;
-    var data = GetEquipmentData(itemId);
-    if (data == null) return;
-    int upgrades = GetUpgradeLevel(itemId);
-    fly.Attack  += data.AttackBonus  + (data.AttackBonus  > 0 ? upgrades : 0);
-    fly.Defense += data.DefenseBonus + (data.DefenseBonus > 0 ? upgrades : 0);
-    fly.Speed   += data.SpeedBonus  + (data.SpeedBonus   > 0 ? upgrades : 0);
-}
-```
-
-3. Add upgrade data to save/load in `InventoryManager.SaveData`:
-```csharp
-public List<string> UpgradeKeys = new();
-public List<int> UpgradeValues = new();
-```
-Wire in `GetSaveData()` and `LoadSaveData()`.
-
-4. Add constant:
-```csharp
-// In Constants.cs
-public const int GEAR_UPGRADE_COST = 100;
-```
-
-5. In `GearEquipPopup.cs`, show upgrade button for currently equipped item:
-```csharp
-// After showing item list, if fly has equipped gear, show upgrade option:
-var equippedId = inv.GetEquippedItem(_targetFlyId);
-if (equippedId != null)
-{
-    var eqData = inv.GetEquipmentData(equippedId);
-    int lvl = inv.GetUpgradeLevel(equippedId);
-    // Add upgrade button at top of panel
-    var upgradeLabel = $"Upgrade {eqData?.ItemName} (+{lvl}) — {Constants.GEAR_UPGRADE_COST} 💰";
-    // ... create button, wire onClick to inv.UpgradeItem(equippedId)
-}
-```
-
-6. Test: equip Poo Thrower → upgrade it → verify Attack bonus is now 9 (8 base + 1) → verify persists after save/load.
-
----
-
-### TASK 30 — Map Zoom & Pan
-
-**Goal:** Player can pinch-zoom and drag the map on mobile. Map content scales, camera stays within bounds.
-
-**Requires:** Task 01 (MainMap scene)
-
-**Files:** new `MapCameraController.cs`
+**Files:** modify `ProjectSettings/`, build scripts
 
 **Steps:**
 
-1. Create `Assets/Scripts/Map/MapCameraController.cs`:
+1. Update build settings:
 ```csharp
-using UnityEngine;
-
-public class MapCameraController : MonoBehaviour
-{
-    [Header("Zoom")]
-    public float MinZoom = 3f;
-    public float MaxZoom = 8f;
-    public float ZoomSpeed = 0.5f;
-
-    [Header("Pan Bounds")]
-    public Vector2 MinBounds = new(-2f, -2f);
-    public Vector2 MaxBounds = new(6f, 6f);
-
-    Camera _cam;
-    Vector3 _dragOrigin;
-    bool _isDragging;
-
-    void Start() => _cam = Camera.main;
-
-    void Update()
-    {
-        if (_cam == null) return;
-
-        // Pinch zoom (mobile)
-        if (Input.touchCount == 2)
-        {
-            var t0 = Input.GetTouch(0);
-            var t1 = Input.GetTouch(1);
-            float prevDist = (t0.position - t0.deltaPosition - (t1.position - t1.deltaPosition)).magnitude;
-            float currDist = (t0.position - t1.position).magnitude;
-            float delta = prevDist - currDist;
-            _cam.orthographicSize = Mathf.Clamp(
-                _cam.orthographicSize + delta * ZoomSpeed * Time.deltaTime,
-                MinZoom, MaxZoom);
-            _isDragging = false;
-            return;
-        }
-
-        // Scroll wheel zoom (editor)
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-        if (Mathf.Abs(scroll) > 0.01f)
-            _cam.orthographicSize = Mathf.Clamp(_cam.orthographicSize - scroll * 2f, MinZoom, MaxZoom);
-
-        // Pan (single finger/mouse drag)
-        if (Input.GetMouseButtonDown(0))
-        {
-            _dragOrigin = _cam.ScreenToWorldPoint(Input.mousePosition);
-            _isDragging = true;
-        }
-
-        if (Input.GetMouseButton(0) && _isDragging)
-        {
-            Vector3 diff = _dragOrigin - _cam.ScreenToWorldPoint(Input.mousePosition);
-            Vector3 newPos = _cam.transform.position + diff;
-            newPos.x = Mathf.Clamp(newPos.x, MinBounds.x, MaxBounds.x);
-            newPos.y = Mathf.Clamp(newPos.y, MinBounds.y, MaxBounds.y);
-            newPos.z = _cam.transform.position.z;
-            _cam.transform.position = newPos;
-        }
-
-        if (Input.GetMouseButtonUp(0))
-            _isDragging = false;
-    }
-}
+// Via unity-cmd or Editor:
+// Player Settings → Android:
+//   Package Name: com.vencacode.flylife
+//   Min API Level: 26 (Android 8.0)
+//   Target API Level: 34 (Android 14)
+//   Scripting Backend: IL2CPP
+//   Target Architectures: ARM64 (drop ARMv7 unless targeting very old devices)
+//   Install Location: Automatic
 ```
 
-2. Attach `MapCameraController` to Main Camera in MainMap scene.
-
-3. Set bounds based on your 5×5 grid tile positions. Adjust `MinBounds`/`MaxBounds` to match actual world coordinates.
-
-4. Test: play on device → pinch to zoom → drag to pan → verify camera stays within map bounds. Also verify district taps still register correctly at different zoom levels.
-
----
-
-### TASK 31 — Push Notifications
-
-**Goal:** Local push notifications for: "Your district is under attack!" (when enemy AI captures) and daily login reminder (if not opened in 24h).
-
-**Requires:** Task 11 (EnemyAI), Task 13 (daily login), Task 22 (Android build)
-
-**Files:** new `NotificationManager.cs`
-
-**Steps:**
-
-1. Install Unity Mobile Notifications package:
-```
-Window → Package Manager → Unity Registry → Mobile Notifications → Install
+2. Create keystore for signing (if not already):
+```powershell
+# In Unity: Edit → Project Settings → Player → Publishing Settings
+# Create New Keystore → set password → create key alias
+# Store keystore file OUTSIDE the repo
 ```
 
-2. Create `Assets/Scripts/Managers/NotificationManager.cs`:
-```csharp
-using UnityEngine;
-#if UNITY_ANDROID
-using Unity.Notifications.Android;
-#endif
-
-public class NotificationManager : MonoBehaviour
-{
-    public static NotificationManager Instance { get; private set; }
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
-    }
-
-    void Start()
-    {
-#if UNITY_ANDROID
-        // Create notification channel
-        var channel = new AndroidNotificationChannel
-        {
-            Id = "flylife_main",
-            Name = "Fly Life",
-            Importance = Importance.Default,
-            Description = "Game notifications"
-        };
-        AndroidNotificationCenter.RegisterNotificationChannel(channel);
-
-        // Cancel old notifications on app open
-        AndroidNotificationCenter.CancelAllNotifications();
-
-        // Schedule daily reminder for 24h from now
-        ScheduleDailyReminder();
-#endif
-    }
-
-    public void ScheduleDailyReminder()
-    {
-#if UNITY_ANDROID
-        var notification = new AndroidNotification
-        {
-            Title = "Your flies miss you! 🪰",
-            Text = "Districts are generating PooCoins. Come collect!",
-            FireTime = System.DateTime.Now.AddHours(24),
-            SmallIcon = "icon_small",
-            LargeIcon = "icon_large"
-        };
-        AndroidNotificationCenter.SendNotification(notification, "flylife_main");
-#endif
-    }
-
-    public void NotifyDistrictUnderAttack(string districtName)
-    {
-#if UNITY_ANDROID
-        var notification = new AndroidNotification
-        {
-            Title = "District under attack! ⚠️",
-            Text = $"{districtName} is being invaded by enemies!",
-            FireTime = System.DateTime.Now.AddSeconds(1),
-            SmallIcon = "icon_small"
-        };
-        AndroidNotificationCenter.SendNotification(notification, "flylife_main");
-#endif
-    }
-}
+3. Build AAB (Android App Bundle):
+```
+File → Build Settings → Android → Build
+Output: flylife-firstplayable.aab
 ```
 
-3. Wire into `EnemyAIManager.TryEnemyAttack()` — when a player district is captured while app is backgrounded:
-```csharp
-// This only fires while app is running, but schedule a "check back" notification
-// for when player is away. In OnApplicationPause(true):
-NotificationManager.Instance?.ScheduleDailyReminder();
+4. Also build APK for direct install testing:
+```
+File → Build Settings → Android → Switch to APK → Build
+Output: flylife-firstplayable.apk
 ```
 
-4. Add `NotificationManager` to GameManager prefab.
-
-5. Test on Android device: open game → background it → wait for notification after 24h (or temporarily set to 30 seconds for testing).
-
----
-
-## PHASE 7 — Content Expansion & Monetisation
-
-### TASK 35 — Cosmetic Fly Skins
-
-**Goal:** Players can unlock and apply cosmetic skins to individual flies. Skins are purely visual and do not affect stats. Some skins are earned through gameplay, others purchasable with Gems.
-
-**Files to create:** `Assets/Scripts/Data/SkinRegistry.cs`, `Assets/Scripts/UI/SkinSelectPopup.cs`
-**Files to modify:** `Assets/Scripts/Data/FlyData.cs`, `Assets/Scripts/Managers/ClanManager.cs`, `Assets/Scripts/Utils/SaveSystem.cs`, `Assets/Scripts/UI/ClanScreenController.cs`, `Assets/Scripts/Core/GameManager.cs`
-
-**Steps:**
-
-1. Add `SkinId` field to `FlyInstance` in `FlyData.cs`:
-```csharp
-public string SkinId;           // null/empty = default skin
+5. Install and test on Device 1 (target: mid-range, e.g. Pixel 6a or Samsung A54):
+```powershell
+adb install flylife-firstplayable.apk
 ```
+Test checklist:
+   - [ ] App launches without crash
+   - [ ] Tutorial plays through
+   - [ ] District tap → info panel → attack → battle → win → return
+   - [ ] Clan screen opens, fly selection works
+   - [ ] Gear equip works
+   - [ ] Settings screen (volume sliders, reset)
+   - [ ] Save persists after kill + reopen
+   - [ ] Map zoom and pan smooth
+   - [ ] No "Watch Ad" buttons visible
+   - [ ] Gem income works (boss kill, daily login)
+   - [ ] 60fps maintained during battle
+   - [ ] No ANR (Application Not Responding) dialogs
 
-2. Create `Assets/Scripts/Data/SkinRegistry.cs`:
-```csharp
-using System.Collections.Generic;
+6. Test on Device 2 (low-end or different screen size):
+   - Repeat checklist above
+   - Check safe area on devices with notch/punch hole
 
-/// <summary>
-/// Static registry of all cosmetic fly skins.
-/// Skins are purely visual — no stat changes.
-/// </summary>
-public static class SkinRegistry
-{
-    public struct SkinDef
-    {
-        public string SkinId;
-        public string DisplayName;
-        public string Description;
-        public string ColorHex;        // Tint color for fly sprite
-        public SkinSource Source;
-        public int GemCost;            // 0 if not purchasable
-        public string UnlockCondition; // human-readable
-    }
-
-    public enum SkinSource { Default, GemShop, BattleReward, LevelReward, Seasonal }
-
-    static readonly Dictionary<string, SkinDef> _skins = new()
-    {
-        ["default"] = new SkinDef
-        {
-            SkinId = "default", DisplayName = "Classic Fly", Description = "The OG. Nothing fancy.",
-            ColorHex = "#888888", Source = SkinSource.Default, GemCost = 0,
-            UnlockCondition = "Already unlocked"
-        },
-        ["golden"] = new SkinDef
-        {
-            SkinId = "golden", DisplayName = "Golden Fly", Description = "Dripping in PooGold.",
-            ColorHex = "#FFD700", Source = SkinSource.GemShop, GemCost = 100,
-            UnlockCondition = "Purchase for 100 Gems"
-        },
-        ["neon"] = new SkinDef
-        {
-            SkinId = "neon", DisplayName = "Neon Buzz", Description = "Glow in the dark. Rave fly.",
-            ColorHex = "#39FF14", Source = SkinSource.GemShop, GemCost = 75,
-            UnlockCondition = "Purchase for 75 Gems"
-        },
-        ["royal"] = new SkinDef
-        {
-            SkinId = "royal", DisplayName = "Royal Purple", Description = "Bow before the king fly.",
-            ColorHex = "#7B2FBE", Source = SkinSource.GemShop, GemCost = 150,
-            UnlockCondition = "Purchase for 150 Gems"
-        },
-        ["crimson"] = new SkinDef
-        {
-            SkinId = "crimson", DisplayName = "Crimson Warrior", Description = "Battle-hardened and fierce.",
-            ColorHex = "#DC143C", Source = SkinSource.BattleReward, GemCost = 0,
-            UnlockCondition = "Win 50 battles"
-        },
-        ["ice"] = new SkinDef
-        {
-            SkinId = "ice", DisplayName = "Frost Wing", Description = "Cool as a frozen turd.",
-            ColorHex = "#87CEEB", Source = SkinSource.LevelReward, GemCost = 0,
-            UnlockCondition = "Reach Clan Level 10"
-        },
-        ["shadow"] = new SkinDef
-        {
-            SkinId = "shadow", DisplayName = "Shadow Fly", Description = "Moves unseen. Spooky.",
-            ColorHex = "#1A1A2E", Source = SkinSource.GemShop, GemCost = 200,
-            UnlockCondition = "Purchase for 200 Gems"
-        },
-        ["candy"] = new SkinDef
-        {
-            SkinId = "candy", DisplayName = "Candy Coat", Description = "Sweet and sticky.",
-            ColorHex = "#FF69B4", Source = SkinSource.Seasonal, GemCost = 0,
-            UnlockCondition = "Seasonal event reward"
-        },
-    };
-
-    public static SkinDef? Get(string skinId)
-        => _skins.TryGetValue(skinId ?? "default", out var def) ? def : null;
-
-    public static IReadOnlyDictionary<string, SkinDef> All => _skins;
-
-    public static List<SkinDef> GetShopSkins()
-    {
-        var list = new List<SkinDef>();
-        foreach (var kv in _skins)
-            if (kv.Value.Source == SkinSource.GemShop)
-                list.Add(kv.Value);
-        return list;
-    }
-}
+7. Collect `adb logcat` output during testing:
+```powershell
+adb logcat -s Unity | tee device_test_log.txt
 ```
+Fix any errors found.
 
-3. Create `Assets/Scripts/UI/SkinSelectPopup.cs` — runtime-built skin picker popup:
-```csharp
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-/// <summary>
-/// Runtime-built popup for selecting / purchasing skins for a fly.
-/// Launched from ClanScreenController.
-/// </summary>
-public class SkinSelectPopup : MonoBehaviour
-{
-    public static SkinSelectPopup Instance { get; private set; }
-
-    Canvas _canvas;
-    GameObject _panel;
-    string _flyId;
-    HashSet<string> _unlockedSkins = new() { "default" };
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start() => BuildUI();
-
-    void BuildUI()
-    {
-        _canvas = new GameObject("SkinSelectCanvas").AddComponent<Canvas>();
-        _canvas.transform.SetParent(transform);
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 830;
-        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        _canvas.gameObject.AddComponent<GraphicRaycaster>();
-
-        _panel = new GameObject("SkinPanel");
-        _panel.transform.SetParent(_canvas.transform, false);
-        var panelRT = _panel.AddComponent<RectTransform>();
-        panelRT.anchorMin = Vector2.zero; panelRT.anchorMax = Vector2.one;
-        panelRT.offsetMin = new Vector2(40, 80); panelRT.offsetMax = new Vector2(-40, -80);
-        var panelImg = _panel.AddComponent<Image>();
-        panelImg.color = new Color(0.12f, 0.12f, 0.15f, 0.97f);
-
-        _panel.SetActive(false);
-    }
-
-    public void Show(string flyId)
-    {
-        _flyId = flyId;
-        _panel.SetActive(true);
-        RebuildContent();
-    }
-
-    public void Hide() => _panel.SetActive(false);
-
-    void RebuildContent()
-    {
-        // Clear previous children (except panel background)
-        foreach (Transform child in _panel.transform)
-            Destroy(child.gameObject);
-
-        // Title
-        var title = CreateLabel(_panel.transform, "Choose Skin", 28, TextAlignmentOptions.Center);
-        var titleRT = title.GetComponent<RectTransform>();
-        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
-        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
-        titleRT.sizeDelta = new Vector2(0, 40);
-
-        // Scroll area
-        var scrollGO = new GameObject("Scroll");
-        scrollGO.transform.SetParent(_panel.transform, false);
-        var scrollRT = scrollGO.AddComponent<RectTransform>();
-        scrollRT.anchorMin = new Vector2(0, 0.1f); scrollRT.anchorMax = new Vector2(1, 0.88f);
-        scrollRT.offsetMin = new Vector2(10, 0); scrollRT.offsetMax = new Vector2(-10, 0);
-        var scroll = scrollGO.AddComponent<ScrollRect>();
-        scrollGO.AddComponent<Image>().color = new Color(0, 0, 0, 0.2f);
-        scrollGO.AddComponent<Mask>().showMaskGraphic = true;
-
-        var content = new GameObject("Content");
-        content.transform.SetParent(scrollGO.transform, false);
-        var contentRT = content.AddComponent<RectTransform>();
-        contentRT.anchorMin = new Vector2(0, 1); contentRT.anchorMax = new Vector2(1, 1);
-        contentRT.pivot = new Vector2(0.5f, 1); contentRT.sizeDelta = new Vector2(0, 0);
-        var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 6; vlg.padding = new RectOffset(8, 8, 8, 8);
-        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-        var fitter = content.AddComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        scroll.content = contentRT;
-        scroll.vertical = true; scroll.horizontal = false;
-
-        // Current fly skin
-        var fly = ClanManager.Instance?.Flies;
-        string currentSkin = "default";
-        if (fly != null)
-            foreach (var f in fly)
-                if (f.InstanceId == _flyId) { currentSkin = f.SkinId ?? "default"; break; }
-
-        // Skin cards
-        foreach (var kv in SkinRegistry.All)
-        {
-            var skin = kv.Value;
-            bool unlocked = _unlockedSkins.Contains(skin.SkinId);
-            bool equipped = skin.SkinId == currentSkin;
-            CreateSkinCard(content.transform, skin, unlocked, equipped);
-        }
-
-        // Close button
-        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
-        var closeBtnRT = closeBtn.GetComponent<RectTransform>();
-        closeBtnRT.anchorMin = new Vector2(0.3f, 0); closeBtnRT.anchorMax = new Vector2(0.7f, 0.1f);
-        closeBtnRT.offsetMin = Vector2.zero; closeBtnRT.offsetMax = Vector2.zero;
-    }
-
-    void CreateSkinCard(Transform parent, SkinRegistry.SkinDef skin, bool unlocked, bool equipped)
-    {
-        var card = new GameObject(skin.SkinId);
-        card.transform.SetParent(parent, false);
-        var le = card.AddComponent<LayoutElement>();
-        le.preferredHeight = 70;
-        var cardImg = card.AddComponent<Image>();
-
-        if (equipped)
-            cardImg.color = new Color(0.15f, 0.35f, 0.15f);
-        else if (unlocked)
-            cardImg.color = new Color(0.2f, 0.2f, 0.25f);
-        else
-            cardImg.color = new Color(0.15f, 0.15f, 0.18f);
-
-        // Color swatch
-        var swatch = new GameObject("Swatch");
-        swatch.transform.SetParent(card.transform, false);
-        var swatchRT = swatch.AddComponent<RectTransform>();
-        swatchRT.anchorMin = new Vector2(0, 0.15f); swatchRT.anchorMax = new Vector2(0, 0.85f);
-        swatchRT.pivot = new Vector2(0, 0.5f); swatchRT.anchoredPosition = new Vector2(10, 0);
-        swatchRT.sizeDelta = new Vector2(40, 0);
-        var swatchImg = swatch.AddComponent<Image>();
-        ColorUtility.TryParseHtmlString(skin.ColorHex, out var skinColor);
-        swatchImg.color = skinColor;
-
-        // Name + description
-        var nameLabel = CreateLabel(card.transform, skin.DisplayName + (equipped ? " ✓" : ""), 18, TextAlignmentOptions.Left);
-        var nameRT = nameLabel.GetComponent<RectTransform>();
-        nameRT.anchorMin = new Vector2(0, 0.5f); nameRT.anchorMax = new Vector2(0.65f, 1);
-        nameRT.offsetMin = new Vector2(60, 0); nameRT.offsetMax = Vector2.zero;
-
-        var descLabel = CreateLabel(card.transform, skin.Description, 13, TextAlignmentOptions.Left);
-        descLabel.color = new Color(0.7f, 0.7f, 0.7f);
-        var descRT = descLabel.GetComponent<RectTransform>();
-        descRT.anchorMin = new Vector2(0, 0); descRT.anchorMax = new Vector2(0.65f, 0.5f);
-        descRT.offsetMin = new Vector2(60, 0); descRT.offsetMax = Vector2.zero;
-
-        // Action button
-        if (equipped)
-        {
-            var eqLabel = CreateLabel(card.transform, "Equipped", 14, TextAlignmentOptions.Center);
-            eqLabel.color = new Color(0.4f, 0.9f, 0.4f);
-            var eqRT = eqLabel.GetComponent<RectTransform>();
-            eqRT.anchorMin = new Vector2(0.7f, 0.2f); eqRT.anchorMax = new Vector2(0.98f, 0.8f);
-            eqRT.offsetMin = Vector2.zero; eqRT.offsetMax = Vector2.zero;
-        }
-        else if (unlocked)
-        {
-            string sid = skin.SkinId;
-            var btn = CreateButton(card.transform, "Apply", () => ApplySkin(sid));
-            var btnRT = btn.GetComponent<RectTransform>();
-            btnRT.anchorMin = new Vector2(0.7f, 0.2f); btnRT.anchorMax = new Vector2(0.98f, 0.8f);
-            btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
-        }
-        else if (skin.Source == SkinRegistry.SkinSource.GemShop && skin.GemCost > 0)
-        {
-            string sid = skin.SkinId;
-            int cost = skin.GemCost;
-            var btn = CreateButton(card.transform, $"{cost} 💎", () => BuySkin(sid, cost));
-            var btnRT = btn.GetComponent<RectTransform>();
-            btnRT.anchorMin = new Vector2(0.7f, 0.2f); btnRT.anchorMax = new Vector2(0.98f, 0.8f);
-            btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
-        }
-        else
-        {
-            var lockLabel = CreateLabel(card.transform, "🔒 " + skin.UnlockCondition, 12, TextAlignmentOptions.Center);
-            lockLabel.color = new Color(0.6f, 0.6f, 0.6f);
-            var lockRT = lockLabel.GetComponent<RectTransform>();
-            lockRT.anchorMin = new Vector2(0.65f, 0.1f); lockRT.anchorMax = new Vector2(0.98f, 0.9f);
-            lockRT.offsetMin = Vector2.zero; lockRT.offsetMax = Vector2.zero;
-        }
-    }
-
-    void ApplySkin(string skinId)
-    {
-        if (ClanManager.Instance == null) return;
-        foreach (var f in ClanManager.Instance.Flies)
-        {
-            if (f.InstanceId == _flyId)
-            {
-                f.SkinId = skinId;
-                Debug.Log($"[SkinSelectPopup] Applied skin '{skinId}' to fly {_flyId}");
-                ToastManager.Instance?.ShowToast($"Skin applied: {SkinRegistry.Get(skinId)?.DisplayName}", ToastType.Success);
-                break;
-            }
-        }
-        RebuildContent();
-        ClanScreenController.Instance?.RefreshFlyList();
-    }
-
-    void BuySkin(string skinId, int gemCost)
-    {
-        if (ResourceManager.Instance == null || !ResourceManager.Instance.SpendGems(gemCost))
-        {
-            ToastManager.Instance?.ShowToast("Not enough Gems!", ToastType.Warning);
-            return;
-        }
-        _unlockedSkins.Add(skinId);
-        Debug.Log($"[SkinSelectPopup] Purchased skin '{skinId}' for {gemCost} Gems");
-        ToastManager.Instance?.ShowToast($"Skin unlocked: {SkinRegistry.Get(skinId)?.DisplayName}", ToastType.Reward);
-        RebuildContent();
-    }
-
-    public void UnlockSkin(string skinId)
-    {
-        if (!_unlockedSkins.Contains(skinId))
-        {
-            _unlockedSkins.Add(skinId);
-            Debug.Log($"[SkinSelectPopup] Unlocked skin '{skinId}'");
-        }
-    }
-
-    public bool IsSkinUnlocked(string skinId) => _unlockedSkins.Contains(skinId);
-
-    // ---- Save / Load ----
-
-    [System.Serializable]
-    public class SaveData
-    {
-        public List<string> UnlockedSkins;
-    }
-
-    public SaveData GetSaveData() => new() { UnlockedSkins = new List<string>(_unlockedSkins) };
-
-    public void LoadSaveData(SaveData data)
-    {
-        if (data?.UnlockedSkins == null) return;
-        _unlockedSkins = new HashSet<string>(data.UnlockedSkins);
-        if (!_unlockedSkins.Contains("default")) _unlockedSkins.Add("default");
-    }
-
-    // ---- UI Helpers ----
-
-    static TextMeshProUGUI CreateLabel(Transform parent, string text, int fontSize, TextAlignmentOptions align)
-    {
-        var go = new GameObject("Label");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text = text; tmp.fontSize = fontSize; tmp.alignment = align;
-        tmp.color = Color.white; tmp.enableAutoSizing = false;
-        return tmp;
-    }
-
-    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
-    {
-        var go = new GameObject("Btn_" + label);
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.2f, 0.45f, 0.7f);
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
-        tmp.transform.SetParent(go.transform, false);
-        tmp.text = label; tmp.fontSize = 14; tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.white;
-        var tmpRT = tmp.GetComponent<RectTransform>();
-        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
-        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
-        return go;
-    }
-}
+8. If all tests pass, tag the build:
+```powershell
+git tag v0.1.0-firstplayable
 ```
-
-4. Add `SkinSelectPopup` to `GameManager.AutoBootstrap()`:
-```csharp
-go.AddComponent<SkinSelectPopup>();
-```
-
-5. Add a "Skin" button to each fly card in `ClanScreenController.cs` (next to the Equip/Train buttons), calling `SkinSelectPopup.Instance.Show(fly.InstanceId)`.
-
-6. Add `SkinSelectPopup.SaveData` to `SaveSystem.SaveFile`, and wire `GetSaveData()` / `LoadSaveData()` in `SaveSystem.Save()` / `SaveSystem.Load()`.
-
-7. Refresh → zero errors.
-
----
-
-### TASK 36 — IAP Gem Packs (Unity Purchasing)
-
-**Goal:** Integrate Unity IAP (`com.unity.purchasing` already in manifest) so players can buy Gem packs with real money. Uses reflection to avoid hard compile dependency — same pattern as NotificationManager.
-
-**Files to create:** `Assets/Scripts/Managers/IAPManager.cs`, `Assets/Scripts/UI/GemShopUI.cs`
-**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Core/Constants.cs`
-
-**Steps:**
-
-1. Add IAP product constants to `Constants.cs`:
-```csharp
-// --- IAP Product IDs ---
-public const string IAP_GEMS_100  = "com.flylife.gems100";
-public const string IAP_GEMS_500  = "com.flylife.gems500";
-public const string IAP_GEMS_1200 = "com.flylife.gems1200";
-public const string IAP_GEMS_3000 = "com.flylife.gems3000";
-```
-
-2. Create `Assets/Scripts/Managers/IAPManager.cs` — uses reflection to interface with Unity Purchasing:
-```csharp
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-
-/// <summary>
-/// Integrates Unity IAP via reflection — compiles and runs with or without
-/// com.unity.purchasing installed. Handles initialization, purchasing, and receipt validation.
-/// </summary>
-public class IAPManager : MonoBehaviour
-{
-    public static IAPManager Instance { get; private set; }
-
-    static bool _packageAvailable;
-    static Type _storeListenerType;
-    static Type _configBuilderType;
-    static Type _purchasingType;
-    static Type _productType;
-    static Type _productTypeEnumType;
-
-    public bool IsInitialized { get; private set; }
-    object _storeController;
-    object _extensionProvider;
-
-    // Product ID → gem amount
-    static readonly Dictionary<string, int> _products = new()
-    {
-        [Constants.IAP_GEMS_100]  = 100,
-        [Constants.IAP_GEMS_500]  = 500,
-        [Constants.IAP_GEMS_1200] = 1200,
-        [Constants.IAP_GEMS_3000] = 3000,
-    };
-
-    // Product ID → display price (updated after initialization)
-    readonly Dictionary<string, string> _prices = new()
-    {
-        [Constants.IAP_GEMS_100]  = "$0.99",
-        [Constants.IAP_GEMS_500]  = "$4.99",
-        [Constants.IAP_GEMS_1200] = "$9.99",
-        [Constants.IAP_GEMS_3000] = "$19.99",
-    };
-
-    public static IReadOnlyDictionary<string, int> Products => _products;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-        DetectPackage();
-    }
-
-    void Start()
-    {
-        if (!_packageAvailable)
-        {
-            Debug.Log("[IAPManager] Unity Purchasing package not detected. IAP disabled.");
-            return;
-        }
-        InitializePurchasing();
-    }
-
-    static void DetectPackage()
-    {
-        _purchasingType = Type.GetType("UnityEngine.Purchasing.UnityPurchasing, UnityEngine.Purchasing");
-        _configBuilderType = Type.GetType("UnityEngine.Purchasing.ConfigurationBuilder, UnityEngine.Purchasing");
-        _productTypeEnumType = Type.GetType("UnityEngine.Purchasing.ProductType, UnityEngine.Purchasing");
-        _storeListenerType = Type.GetType("UnityEngine.Purchasing.IStoreListener, UnityEngine.Purchasing");
-        _packageAvailable = _purchasingType != null && _configBuilderType != null;
-    }
-
-    void InitializePurchasing()
-    {
-        if (!_packageAvailable) return;
-        try
-        {
-            // ConfigurationBuilder.Instance(StandardPurchasingModule.Instance())
-            var stdModuleType = Type.GetType("UnityEngine.Purchasing.StandardPurchasingModule, UnityEngine.Purchasing");
-            var moduleInstance = stdModuleType?.GetMethod("Instance", Type.EmptyTypes)?.Invoke(null, null);
-            var builder = _configBuilderType?.GetMethod("Instance")?.Invoke(null, new[] { moduleInstance });
-
-            // builder.AddProduct(id, ProductType.Consumable)
-            var consumable = Enum.ToObject(_productTypeEnumType, 0); // Consumable = 0
-            var addMethod = builder?.GetType().GetMethod("AddProduct", new[] { typeof(string), _productTypeEnumType });
-            foreach (var productId in _products.Keys)
-                addMethod?.Invoke(builder, new[] { (object)productId, consumable });
-
-            Debug.Log("[IAPManager] IAP products configured. Initialization deferred to store callback.");
-            IsInitialized = true; // Simplified — real init is async via IStoreListener
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[IAPManager] Init failed: {e.Message}");
-        }
-    }
-
-    public void PurchaseProduct(string productId)
-    {
-        if (!_packageAvailable || !IsInitialized)
-        {
-            Debug.LogWarning("[IAPManager] Cannot purchase — IAP not initialized.");
-            // Fallback: grant gems directly in debug/editor mode
-#if UNITY_EDITOR
-            GrantGems(productId);
-#endif
-            return;
-        }
-        // In production, call UnityPurchasing.InitiatePurchase(productId)
-        // For now, simulate purchase in editor
-#if UNITY_EDITOR
-        GrantGems(productId);
-#endif
-    }
-
-    void GrantGems(string productId)
-    {
-        if (!_products.TryGetValue(productId, out int gems)) return;
-        ResourceManager.Instance?.AddGems(gems);
-        Debug.Log($"[IAPManager] Granted {gems} gems for product {productId}");
-        ToastManager.Instance?.ShowToast($"+{gems} Gems purchased!", ToastType.Reward);
-    }
-
-    public string GetPrice(string productId)
-        => _prices.TryGetValue(productId, out var p) ? p : "???";
-
-    public int GetGemAmount(string productId)
-        => _products.TryGetValue(productId, out var g) ? g : 0;
-}
-```
-
-3. Create `Assets/Scripts/UI/GemShopUI.cs` — runtime-built Gem shop overlay:
-```csharp
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-/// <summary>
-/// Runtime-built Gem shop overlay. Shows IAP packs with prices.
-/// Accessed via a gem icon button in the HUD or Settings.
-/// </summary>
-public class GemShopUI : MonoBehaviour
-{
-    public static GemShopUI Instance { get; private set; }
-
-    Canvas _canvas;
-    GameObject _panel;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start() => BuildUI();
-
-    void BuildUI()
-    {
-        _canvas = new GameObject("GemShopCanvas").AddComponent<Canvas>();
-        _canvas.transform.SetParent(transform);
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 860;
-        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        _canvas.gameObject.AddComponent<GraphicRaycaster>();
-
-        _panel = new GameObject("ShopPanel");
-        _panel.transform.SetParent(_canvas.transform, false);
-        var rt = _panel.AddComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = new Vector2(30, 100); rt.offsetMax = new Vector2(-30, -60);
-        _panel.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.14f, 0.97f);
-
-        _panel.SetActive(false);
-    }
-
-    public void Show()
-    {
-        _panel.SetActive(true);
-        RebuildContent();
-    }
-
-    public void Hide() => _panel.SetActive(false);
-    public void Toggle() { if (_panel.activeSelf) Hide(); else Show(); }
-
-    void RebuildContent()
-    {
-        foreach (Transform child in _panel.transform)
-            Destroy(child.gameObject);
-
-        // Title
-        var title = CreateLabel(_panel.transform, "💎 Gem Shop", 28, TextAlignmentOptions.Center);
-        var titleRT = title.GetComponent<RectTransform>();
-        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
-        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
-        titleRT.sizeDelta = new Vector2(0, 45);
-
-        // Current balance
-        int gems = ResourceManager.Instance?.Gems ?? 0;
-        var balance = CreateLabel(_panel.transform, $"Balance: {gems} Gems", 18, TextAlignmentOptions.Center);
-        balance.color = new Color(0.6f, 0.85f, 1f);
-        var balRT = balance.GetComponent<RectTransform>();
-        balRT.anchorMin = new Vector2(0, 1); balRT.anchorMax = new Vector2(1, 1);
-        balRT.pivot = new Vector2(0.5f, 1); balRT.anchoredPosition = new Vector2(0, -55);
-        balRT.sizeDelta = new Vector2(0, 30);
-
-        // Product cards
-        float yOffset = -100;
-        string[] productIds = {
-            Constants.IAP_GEMS_100, Constants.IAP_GEMS_500,
-            Constants.IAP_GEMS_1200, Constants.IAP_GEMS_3000
-        };
-        string[] bonusLabels = { "", "", "+20% bonus!", "+50% bonus!" };
-
-        for (int i = 0; i < productIds.Length; i++)
-        {
-            string pid = productIds[i];
-            int gemAmt = IAPManager.Instance?.GetGemAmount(pid) ?? 0;
-            string price = IAPManager.Instance?.GetPrice(pid) ?? "???";
-            CreateProductCard(_panel.transform, pid, gemAmt, price, bonusLabels[i], yOffset);
-            yOffset -= 80;
-        }
-
-        // Close button
-        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
-        var closeBtnRT = closeBtn.GetComponent<RectTransform>();
-        closeBtnRT.anchorMin = new Vector2(0.3f, 0); closeBtnRT.anchorMax = new Vector2(0.7f, 0.08f);
-        closeBtnRT.offsetMin = Vector2.zero; closeBtnRT.offsetMax = Vector2.zero;
-    }
-
-    void CreateProductCard(Transform parent, string productId, int gems, string price, string bonus, float yPos)
-    {
-        var card = new GameObject("Product_" + gems);
-        card.transform.SetParent(parent, false);
-        var cardRT = card.AddComponent<RectTransform>();
-        cardRT.anchorMin = new Vector2(0.05f, 1); cardRT.anchorMax = new Vector2(0.95f, 1);
-        cardRT.pivot = new Vector2(0.5f, 1); cardRT.anchoredPosition = new Vector2(0, yPos);
-        cardRT.sizeDelta = new Vector2(0, 70);
-        card.AddComponent<Image>().color = new Color(0.18f, 0.18f, 0.22f);
-
-        // Gem amount
-        string label = $"💎 {gems} Gems";
-        if (!string.IsNullOrEmpty(bonus)) label += $"  <color=#FFD700><size=14>{bonus}</size></color>";
-        var gemLabel = CreateLabel(card.transform, label, 20, TextAlignmentOptions.Left);
-        gemLabel.richText = true;
-        var gemRT = gemLabel.GetComponent<RectTransform>();
-        gemRT.anchorMin = new Vector2(0, 0); gemRT.anchorMax = new Vector2(0.65f, 1);
-        gemRT.offsetMin = new Vector2(15, 0); gemRT.offsetMax = Vector2.zero;
-
-        // Buy button
-        string pid = productId;
-        var btn = CreateButton(card.transform, price, () => IAPManager.Instance?.PurchaseProduct(pid));
-        var btnRT = btn.GetComponent<RectTransform>();
-        btnRT.anchorMin = new Vector2(0.68f, 0.15f); btnRT.anchorMax = new Vector2(0.95f, 0.85f);
-        btnRT.offsetMin = Vector2.zero; btnRT.offsetMax = Vector2.zero;
-        btn.GetComponent<Image>().color = new Color(0.2f, 0.6f, 0.2f);
-    }
-
-    // ---- UI Helpers (same pattern as other UI classes) ----
-
-    static TextMeshProUGUI CreateLabel(Transform parent, string text, int size, TextAlignmentOptions align)
-    {
-        var go = new GameObject("Label");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text = text; tmp.fontSize = size; tmp.alignment = align;
-        tmp.color = Color.white;
-        return tmp;
-    }
-
-    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
-    {
-        var go = new GameObject("Btn_" + label);
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.2f, 0.45f, 0.7f);
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
-        tmp.transform.SetParent(go.transform, false);
-        tmp.text = label; tmp.fontSize = 16; tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.white;
-        var tmpRT = tmp.GetComponent<RectTransform>();
-        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
-        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
-        return go;
-    }
-}
-```
-
-4. Add both to `GameManager.AutoBootstrap()`:
-```csharp
-go.AddComponent<IAPManager>();
-go.AddComponent<GemShopUI>();
-```
-
-5. Add a Gem Shop button (💎) next to the settings gear in the HUD, calling `GemShopUI.Instance.Toggle()`. Add this in `SettingsScreenController.cs` Start() or as a separate HUD button.
-
-6. Refresh → zero errors.
-
----
-
-### TASK 37 — Expanded Map (7×7 Grid)
-
-**Goal:** Expand the city map from 5×5 to 7×7 (49 districts). Adds a new Ring 3 (outer edge) with difficulty 7. New theme types: `Hospital` and `Airport`. Camera bounds updated.
-
-**Files to modify:** `Assets/Scripts/Map/TerritoryManager.cs`, `Assets/Scripts/Data/DistrictThemeData.cs`, `Assets/Scripts/Map/MapCameraController.cs`, `Assets/Scripts/Core/Constants.cs`
-
-**Steps:**
-
-1. Add two new theme types to `DistrictThemeType` enum in `DistrictThemeData.cs`:
-```csharp
-public enum DistrictThemeType
-{
-    Residential, DogPark, BackAlley, Sewer, Playground,
-    TownSquare, Market, Construction, University, Waterfront,
-    Hospital,   // new
-    Airport     // new
-}
-```
-
-2. Add theme data entries for `Hospital` and `Airport` in `DistrictThemeData.BuildRegistry()`:
-```csharp
-[DistrictThemeType.Hospital] = new()
-{
-    Type = DistrictThemeType.Hospital,
-    ThemeName = "Hospital",
-    Icon = "[H]",
-    ThemeColor = new Color(0.85f, 0.85f, 0.9f),
-    PooSpawnRateMultiplier = 0.6f,
-    PooQualityMultiplier = 1.3f,
-    ResourceBonusMultiplier = 1.1f,
-    XPBonusMultiplier = 1.0f,
-    Description = "Clean but busy. +30% poo quality."
-},
-[DistrictThemeType.Airport] = new()
-{
-    Type = DistrictThemeType.Airport,
-    ThemeName = "Airport",
-    Icon = "[✈]",
-    ThemeColor = new Color(0.5f, 0.6f, 0.8f),
-    PooSpawnRateMultiplier = 1.4f,
-    PooQualityMultiplier = 0.8f,
-    ResourceBonusMultiplier = 1.2f,
-    XPBonusMultiplier = 1.0f,
-    Description = "International poo. +40% rate, +20% income."
-},
-```
-
-3. Update `TerritoryManager` — change `GridWidth` and `GridHeight` from 5 to 7, replace `CityLayout`:
-```csharp
-public int GridWidth  = 7;
-public int GridHeight = 7;
-
-// City layout: themed 7x7 grid (y=0 is bottom row)
-static readonly DistrictThemeType[,] CityLayout =
-{
-    // x=0              x=1              x=2              x=3              x=4              x=5              x=6
-    { DistrictThemeType.Airport,       DistrictThemeType.Market,       DistrictThemeType.Residential,  DistrictThemeType.TownSquare,    DistrictThemeType.University,    DistrictThemeType.Waterfront,   DistrictThemeType.Airport      }, // y=0
-    { DistrictThemeType.Hospital,      DistrictThemeType.Market,       DistrictThemeType.Residential,  DistrictThemeType.TownSquare,    DistrictThemeType.University,    DistrictThemeType.Waterfront,   DistrictThemeType.Hospital     }, // y=1
-    { DistrictThemeType.Residential,   DistrictThemeType.Residential,  DistrictThemeType.BackAlley,    DistrictThemeType.Playground,    DistrictThemeType.Construction,  DistrictThemeType.Residential,  DistrictThemeType.Construction }, // y=2
-    { DistrictThemeType.Waterfront,    DistrictThemeType.Construction, DistrictThemeType.DogPark,      DistrictThemeType.TownSquare,    DistrictThemeType.DogPark,       DistrictThemeType.BackAlley,    DistrictThemeType.Sewer        }, // y=3
-    { DistrictThemeType.Construction,  DistrictThemeType.Residential,  DistrictThemeType.Playground,   DistrictThemeType.DogPark,       DistrictThemeType.Sewer,         DistrictThemeType.Residential,  DistrictThemeType.Residential  }, // y=4
-    { DistrictThemeType.Hospital,      DistrictThemeType.Waterfront,   DistrictThemeType.University,   DistrictThemeType.TownSquare,    DistrictThemeType.Residential,   DistrictThemeType.Market,       DistrictThemeType.Hospital     }, // y=5
-    { DistrictThemeType.Airport,       DistrictThemeType.Residential,  DistrictThemeType.Market,       DistrictThemeType.Playground,    DistrictThemeType.University,    DistrictThemeType.Residential,  DistrictThemeType.Airport      }, // y=6
-};
-```
-
-4. Update `GenerateDistricts()` center reference from `(2,2)` to `(3,3)` and add Ring 3:
-```csharp
-int ring = Mathf.Max(Mathf.Abs(x - 3), Mathf.Abs(y - 3)); // Chebyshev from new center (3,3)
-bool isBoss = (x == 0 || x == GridWidth - 1) && (y == 0 || y == GridHeight - 1);
-int difficulty = isBoss ? 8 : (ring == 0 ? 1 : ring == 1 ? 3 : ring == 2 ? 5 : 7);
-```
-
-5. Update `Start()` center district from `"district_2_2"` to `"district_3_3"`.
-
-6. Update `MapCameraController` bounds for 7×7 grid:
-```csharp
-public Vector2 MinBounds = new(-2f, -2f);
-public Vector2 MaxBounds = new(8f, 8f);   // was (6,6) for 5x5
-public float MaxZoom = 10f;               // was 8 — need more zoom-out for bigger map
-```
-
-7. Add a new max-level constant if desired:
-```csharp
-public const int MAX_DISTRICT_DIFFICULTY = 8;
-```
-
-8. Refresh → zero errors. Note: existing saves with `district_2_2` ownership will need migration — the center is now `district_3_3`. Consider checking both in `Start()` for backward compatibility.
-
----
-
-### TASK 38 — Legendary Gear Tier
-
-**Goal:** Add `Legendary` rarity to the equipment system with 4 powerful new items. Legendary items have unique effects and higher stats. Drops only from Boss districts.
-
-**Files to modify:** `Assets/Scripts/Data/EquipmentData.cs`, `Assets/Scripts/Data/EquipmentRegistry.cs`, `Assets/Scripts/Battle/BattleManager.cs`
-
-**Steps:**
-
-1. Add `Legendary` to `EquipmentRarity` enum in `EquipmentData.cs`:
-```csharp
-public enum EquipmentRarity { Common, Uncommon, Rare, Epic, Legendary }
-```
-
-2. Add new `SpecialEffect` values for legendary items:
-```csharp
-public enum SpecialEffect
-{
-    None,
-    AOESplash, ReflectDamage, BlockFirstHit, ActFirst,
-    ReduceAccuracy, StunEnemy, FastItemGrab,
-    // Legendary effects:
-    LifeSteal,      // heal % of damage dealt
-    DoubleStrike,   // chance to attack twice
-    Invincible,     // survive one lethal hit at 1 HP
-    RallyAllies     // boost all allies' ATK by %
-}
-```
-
-3. Add 4 Legendary items to `EquipmentRegistry._items`:
-```csharp
-["GoldenDungScepter"] = new EquipmentDef
-{
-    ItemName = "Golden Dung Scepter", Slot = EquipmentSlot.Weapon,
-    Rarity = EquipmentRarity.Legendary,
-    AttackBonus = 20, SpeedBonus = 5,
-    Description = "The holy grail of poo weapons. Heals 25% of damage dealt.",
-    Effect = SpecialEffect.LifeSteal, EffectValue = 0.25f
-},
-["DiamondWings"] = new EquipmentDef
-{
-    ItemName = "Diamond Wings", Slot = EquipmentSlot.Wings,
-    Rarity = EquipmentRarity.Legendary,
-    SpeedBonus = 15, DefenseBonus = 8,
-    Description = "Impossibly fast. 30% chance to strike twice.",
-    Effect = SpecialEffect.DoubleStrike, EffectValue = 0.3f
-},
-["CrownOfTheSwarm"] = new EquipmentDef
-{
-    ItemName = "Crown of the Swarm", Slot = EquipmentSlot.Head,
-    Rarity = EquipmentRarity.Legendary,
-    DefenseBonus = 12, HealthBonus = 30,
-    Description = "The swarm obeys. All allies gain +20% ATK.",
-    Effect = SpecialEffect.RallyAllies, EffectValue = 0.2f
-},
-["PhoenixCarapace"] = new EquipmentDef
-{
-    ItemName = "Phoenix Carapace", Slot = EquipmentSlot.Body,
-    Rarity = EquipmentRarity.Legendary,
-    DefenseBonus = 18, HealthBonus = 20,
-    Description = "Survive one lethal blow. Refuse to die.",
-    Effect = SpecialEffect.Invincible, EffectValue = 1f
-},
-```
-
-4. Add a helper to `EquipmentRegistry`:
-```csharp
-/// <summary>Returns only items of Legendary rarity.</summary>
-public static List<string> GetLegendaryItems()
-{
-    var list = new List<string>();
-    foreach (var kv in _items)
-        if (kv.Value.Rarity == EquipmentRarity.Legendary)
-            list.Add(kv.Key);
-    return list;
-}
-
-/// <summary>Returns items droppable in a Boss district.</summary>
-public static List<string> GetBossDrops()
-    => GetLegendaryItems(); // Boss districts drop legendary items
-```
-
-5. In `BattleManager` (item drop logic), modify the drop selection to use boss drops when the battle district is a boss district:
-```csharp
-// In the item drop section after battle win:
-bool isBoss = false;
-if (TerritoryManager.Instance?.GetDistrict(_currentDistrictId) is District d)
-    isBoss = d.IsBoss;
-
-var dropPool = isBoss
-    ? EquipmentRegistry.GetBossDrops()
-    : EquipmentRegistry.GetDroppableItems();
-
-if (dropPool.Count > 0)
-{
-    string droppedItem = dropPool[Random.Range(0, dropPool.Count)];
-    // ... existing drop logic ...
-}
-```
-
-6. Implement legendary effects in `BattleManager.ExecuteAttack()`:
-   - `LifeSteal`: after dealing damage, heal attacker by `EffectValue * damageDealt`
-   - `DoubleStrike`: `Random.value < EffectValue` → attack again
-   - `Invincible`: if target would die and has this effect and hasn't triggered it yet, set HP to 1 instead
-   - `RallyAllies`: at battle start, add `EffectValue * baseATK` to all allies' attack
-
-7. Update `GearEquipPopup` to show Legendary items in gold text color.
-
-8. Refresh → zero errors.
-
----
-
-### TASK 39 — Fly Promotion System (Elite Tier)
-
-**Goal:** Flies that reach level 10 can be "promoted" to Elite status. Elite flies get a stat multiplier, a visual badge, and can equip a 7th gear slot (Accessory). Costs PooCoins.
-
-**Files to modify:** `Assets/Scripts/Data/FlyData.cs`, `Assets/Scripts/Data/EquipmentData.cs`, `Assets/Scripts/Managers/ClanManager.cs`, `Assets/Scripts/Managers/InventoryManager.cs`, `Assets/Scripts/UI/ClanScreenController.cs`, `Assets/Scripts/Core/Constants.cs`
-
-**Steps:**
-
-1. Add promotion fields to `FlyInstance` in `FlyData.cs`:
-```csharp
-public bool   IsElite;                    // promoted
-public string EquippedAccessoryId;        // 7th slot (elite only)
-```
-
-2. Add `Accessory` to `EquipmentSlot` enum:
-```csharp
-public enum EquipmentSlot { Weapon, Head, Body, Feet, Wings, Offhand, Accessory }
-```
-
-3. Add promotion constants to `Constants.cs`:
-```csharp
-// --- Promotion ---
-public const int    PROMOTION_LEVEL_REQ  = 10;
-public const int    PROMOTION_COST       = 500;   // PooCoins
-public const float  ELITE_STAT_MULTIPLIER = 1.25f; // 25% stat boost
-```
-
-4. Add `PromoteFly()` to `ClanManager`:
-```csharp
-public bool PromoteFly(string flyId)
-{
-    var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
-    if (fly == null || fly.IsElite || fly.Level < Constants.PROMOTION_LEVEL_REQ)
-        return false;
-    if (ResourceManager.Instance == null ||
-        !ResourceManager.Instance.SpendPooCoins(Constants.PROMOTION_COST))
-        return false;
-
-    fly.IsElite = true;
-    fly.Attack    = Mathf.RoundToInt(fly.Attack  * Constants.ELITE_STAT_MULTIPLIER);
-    fly.Defense   = Mathf.RoundToInt(fly.Defense * Constants.ELITE_STAT_MULTIPLIER);
-    fly.Speed     = Mathf.RoundToInt(fly.Speed   * Constants.ELITE_STAT_MULTIPLIER);
-    fly.MaxHealth = Mathf.RoundToInt(fly.MaxHealth * Constants.ELITE_STAT_MULTIPLIER);
-    fly.CurrentHealth = fly.MaxHealth;
-
-    Debug.Log($"[ClanManager] Fly {flyId} promoted to ELITE! Stats boosted by {(Constants.ELITE_STAT_MULTIPLIER - 1f) * 100}%");
-    ToastManager.Instance?.ShowToast($"{fly.Role} promoted to Elite!", ToastType.Success);
-    UIEventBus.Emit(UIEvent.ClanUpdated);
-    return true;
-}
-```
-
-5. Update `InventoryManager.SetFlySlot()` to handle the new Accessory slot:
-```csharp
-case EquipmentSlot.Accessory: fly.EquippedAccessoryId = itemId; break;
-```
-
-6. Update `InventoryManager.EquipItem()` to check elite status for Accessory slot:
-```csharp
-// After the null checks:
-if (data.Slot == EquipmentSlot.Accessory && !fly.IsElite)
-{
-    Debug.LogWarning("[Inventory] Only Elite flies can equip accessories.");
-    return false;
-}
-```
-
-7. Add 2 Accessory items to `EquipmentRegistry`:
-```csharp
-["LuckyCharm"] = new EquipmentDef
-{
-    ItemName = "Lucky Charm", Slot = EquipmentSlot.Accessory,
-    Rarity = EquipmentRarity.Rare,
-    AttackBonus = 3, DefenseBonus = 3, SpeedBonus = 3, HealthBonus = 10,
-    Description = "A little bit of everything. Elite flies only.",
-    Effect = SpecialEffect.None, EffectValue = 0f
-},
-["VeteranBadge"] = new EquipmentDef
-{
-    ItemName = "Veteran Badge", Slot = EquipmentSlot.Accessory,
-    Rarity = EquipmentRarity.Epic,
-    AttackBonus = 8, HealthBonus = 20,
-    Description = "Battle-tested. +20% XP gain. Elite flies only.",
-    Effect = SpecialEffect.FastItemGrab, EffectValue = 1.2f
-},
-```
-
-8. Update `ClanScreenController` fly cards: show "⭐ ELITE" badge, and if fly is level 10+ and not elite, show a "Promote" button (costs `PROMOTION_COST`).
-
-9. Refresh → zero errors.
-
----
-
-### TASK 40 — Seasonal Events Framework
-
-**Goal:** Create a framework for time-limited seasonal events. Each event has start/end dates, bonus modifiers, and a themed reward skin. First event: "Poo Year" (runs whenever date matches).
-
-**Files to create:** `Assets/Scripts/Data/SeasonalEventRegistry.cs`, `Assets/Scripts/Managers/SeasonalEventManager.cs`
-**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Managers/ResourceManager.cs`, `Assets/Scripts/Utils/UIEventBus.cs`
-
-**Steps:**
-
-1. Add new UIEvent:
-```csharp
-// In UIEvent enum:
-SeasonalEventStarted,
-SeasonalEventEnded
-```
-
-2. Create `Assets/Scripts/Data/SeasonalEventRegistry.cs`:
-```csharp
-using System;
-using System.Collections.Generic;
-
-/// <summary>
-/// Defines seasonal events with dates, bonuses, and rewards.
-/// </summary>
-public static class SeasonalEventRegistry
-{
-    public struct EventDef
-    {
-        public string EventId;
-        public string DisplayName;
-        public string Description;
-        public int StartMonth, StartDay;      // recurring annually
-        public int DurationDays;
-        public float PooRateMultiplier;       // applied globally during event
-        public float XPMultiplier;
-        public float CoinMultiplier;
-        public string RewardSkinId;           // unlocked for participating
-        public string BannerColorHex;
-    }
-
-    static readonly List<EventDef> _events = new()
-    {
-        new EventDef
-        {
-            EventId = "poo_year", DisplayName = "Poo Year Festival",
-            Description = "Ring in the Poo Year! Double poo rate and +50% coins for 3 days.",
-            StartMonth = 1, StartDay = 1, DurationDays = 3,
-            PooRateMultiplier = 2.0f, XPMultiplier = 1.0f, CoinMultiplier = 1.5f,
-            RewardSkinId = "candy", BannerColorHex = "#FFD700"
-        },
-        new EventDef
-        {
-            EventId = "summer_swarm", DisplayName = "Summer Swarm",
-            Description = "Summer heat means more flies! +50% XP and double hatch speed.",
-            StartMonth = 6, StartDay = 21, DurationDays = 7,
-            PooRateMultiplier = 1.0f, XPMultiplier = 1.5f, CoinMultiplier = 1.0f,
-            RewardSkinId = "neon", BannerColorHex = "#39FF14"
-        },
-        new EventDef
-        {
-            EventId = "spooky_swarm", DisplayName = "Spooky Swarm",
-            Description = "Haunted poos and ghostly flies. +75% XP from battles.",
-            StartMonth = 10, StartDay = 28, DurationDays = 5,
-            PooRateMultiplier = 1.3f, XPMultiplier = 1.75f, CoinMultiplier = 1.0f,
-            RewardSkinId = "shadow", BannerColorHex = "#1A1A2E"
-        },
-    };
-
-    /// <summary>Returns the currently active event, or null if none.</summary>
-    public static EventDef? GetActiveEvent()
-    {
-        var now = DateTime.Now;
-        foreach (var e in _events)
-        {
-            var start = new DateTime(now.Year, e.StartMonth, e.StartDay);
-            var end = start.AddDays(e.DurationDays);
-            if (now >= start && now < end) return e;
-        }
-        return null;
-    }
-
-    public static IReadOnlyList<EventDef> AllEvents => _events;
-}
-```
-
-3. Create `Assets/Scripts/Managers/SeasonalEventManager.cs`:
-```csharp
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-/// <summary>
-/// Checks for active seasonal events on startup.
-/// Displays a banner and applies global multipliers during events.
-/// Awards the event skin on first login during an event.
-/// </summary>
-public class SeasonalEventManager : MonoBehaviour
-{
-    public static SeasonalEventManager Instance { get; private set; }
-
-    Canvas _canvas;
-    GameObject _banner;
-    TextMeshProUGUI _bannerText;
-
-    public SeasonalEventRegistry.EventDef? ActiveEvent { get; private set; }
-    public bool HasActiveEvent => ActiveEvent.HasValue;
-
-    // Multipliers other systems can query
-    public float PooRateMultiplier  => ActiveEvent?.PooRateMultiplier  ?? 1f;
-    public float XPMultiplier       => ActiveEvent?.XPMultiplier       ?? 1f;
-    public float CoinMultiplier     => ActiveEvent?.CoinMultiplier     ?? 1f;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start()
-    {
-        BuildBanner();
-        CheckForEvent();
-    }
-
-    void CheckForEvent()
-    {
-        ActiveEvent = SeasonalEventRegistry.GetActiveEvent();
-        if (ActiveEvent.HasValue)
-        {
-            var e = ActiveEvent.Value;
-            Debug.Log($"[SeasonalEventManager] Active event: {e.DisplayName}");
-            ShowBanner(e);
-            UIEventBus.Emit(UIEvent.SeasonalEventStarted, e);
-
-            // Award skin if not already unlocked
-            if (SkinSelectPopup.Instance != null && !SkinSelectPopup.Instance.IsSkinUnlocked(e.RewardSkinId))
-            {
-                SkinSelectPopup.Instance.UnlockSkin(e.RewardSkinId);
-                ToastManager.Instance?.ShowToast(
-                    $"Event reward: {SkinRegistry.Get(e.RewardSkinId)?.DisplayName} skin unlocked!",
-                    ToastType.Reward);
-            }
-        }
-        else
-        {
-            _banner.SetActive(false);
-        }
-    }
-
-    void BuildBanner()
-    {
-        _canvas = new GameObject("EventBannerCanvas").AddComponent<Canvas>();
-        _canvas.transform.SetParent(transform);
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 750;
-        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        _canvas.gameObject.AddComponent<GraphicRaycaster>();
-
-        _banner = new GameObject("Banner");
-        _banner.transform.SetParent(_canvas.transform, false);
-        var rt = _banner.AddComponent<RectTransform>();
-        rt.anchorMin = new Vector2(0, 1); rt.anchorMax = new Vector2(1, 1);
-        rt.pivot = new Vector2(0.5f, 1); rt.anchoredPosition = new Vector2(0, -45);
-        rt.sizeDelta = new Vector2(0, 35);
-        _banner.AddComponent<Image>().color = new Color(0.3f, 0.3f, 0.1f, 0.9f);
-
-        var textGO = new GameObject("Text");
-        textGO.transform.SetParent(_banner.transform, false);
-        var textRT = textGO.AddComponent<RectTransform>();
-        textRT.anchorMin = Vector2.zero; textRT.anchorMax = Vector2.one;
-        textRT.offsetMin = new Vector2(10, 0); textRT.offsetMax = new Vector2(-10, 0);
-        _bannerText = textGO.AddComponent<TextMeshProUGUI>();
-        _bannerText.fontSize = 16; _bannerText.alignment = TextAlignmentOptions.Center;
-        _bannerText.color = Color.white;
-
-        _banner.SetActive(false);
-    }
-
-    void ShowBanner(SeasonalEventRegistry.EventDef e)
-    {
-        if (ColorUtility.TryParseHtmlString(e.BannerColorHex, out var color))
-            _banner.GetComponent<Image>().color = new Color(color.r, color.g, color.b, 0.9f);
-        _bannerText.text = $"🎉 {e.DisplayName} — {e.Description}";
-        _banner.SetActive(true);
-    }
-}
-```
-
-4. Add `SeasonalEventManager` to `GameManager.AutoBootstrap()`:
-```csharp
-go.AddComponent<SeasonalEventManager>();
-```
-
-5. Wire multipliers into `ResourceManager.AddPooCoins()`:
-```csharp
-float seasonalBonus = SeasonalEventManager.Instance?.CoinMultiplier ?? 1f;
-int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.ResourceMultiplier ?? 1f) * seasonalBonus);
-```
-
-6. Wire XP multiplier into `ClanManager.AddXP()`:
-```csharp
-float seasonalXP = SeasonalEventManager.Instance?.XPMultiplier ?? 1f;
-int bonus = Mathf.RoundToInt(amount * (BonusManager.Instance?.XPMultiplier ?? 1f) * seasonalXP);
-```
-
-7. Refresh → zero errors.
-
----
-
-### TASK 41 — Leaderboard (Local + Cloud)
-
-**Goal:** Track player scores (total districts owned + clan level + total flies) and display a leaderboard. Uses CloudSyncManager to sync scores. Falls back to local-only if cloud is unavailable.
-
-**Files to create:** `Assets/Scripts/Managers/LeaderboardManager.cs`, `Assets/Scripts/UI/LeaderboardUI.cs`
-**Files to modify:** `Assets/Scripts/Core/GameManager.cs`, `Assets/Scripts/Utils/UIEventBus.cs`
-
-**Steps:**
-
-1. Add UIEvent:
-```csharp
-LeaderboardUpdated
-```
-
-2. Create `Assets/Scripts/Managers/LeaderboardManager.cs`:
-```csharp
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-
-/// <summary>
-/// Calculates and stores player score.
-/// In a real game this would sync with a server — here we track local + simulated rivals.
-/// </summary>
-public class LeaderboardManager : MonoBehaviour
-{
-    public static LeaderboardManager Instance { get; private set; }
-
-    [System.Serializable]
-    public class LeaderboardEntry
-    {
-        public string PlayerName;
-        public string ClanName;
-        public int Score;
-        public int Districts;
-        public int ClanLevel;
-        public int TotalFlies;
-        public bool IsPlayer;
-    }
-
-    List<LeaderboardEntry> _entries = new();
-    public IReadOnlyList<LeaderboardEntry> Entries => _entries;
-    public int PlayerScore { get; private set; }
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start()
-    {
-        GenerateRivals();
-        InvokeRepeating(nameof(RefreshScore), 2f, 30f); // refresh every 30s
-    }
-
-    public void RefreshScore()
-    {
-        int districts = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0;
-        int clanLevel = ClanManager.Instance?.ClanLevel ?? 1;
-        int totalFlies = ClanManager.Instance?.TotalFlies ?? 0;
-
-        PlayerScore = (districts * 100) + (clanLevel * 50) + (totalFlies * 10);
-
-        // Update player entry
-        var playerEntry = _entries.FirstOrDefault(e => e.IsPlayer);
-        if (playerEntry != null)
-        {
-            playerEntry.Score = PlayerScore;
-            playerEntry.Districts = districts;
-            playerEntry.ClanLevel = clanLevel;
-            playerEntry.TotalFlies = totalFlies;
-            playerEntry.ClanName = ClanManager.Instance?.ClanName ?? "The Fly Lifers";
-        }
-
-        // Sort by score descending
-        _entries.Sort((a, b) => b.Score.CompareTo(a.Score));
-        UIEventBus.Emit(UIEvent.LeaderboardUpdated);
-    }
-
-    void GenerateRivals()
-    {
-        // Player entry
-        _entries.Add(new LeaderboardEntry
-        {
-            PlayerName = "You",
-            ClanName = ClanManager.Instance?.ClanName ?? "The Fly Lifers",
-            Score = 0, Districts = 0, ClanLevel = 1, TotalFlies = 1,
-            IsPlayer = true
-        });
-
-        // Simulated rival clans
-        string[] names = {
-            "Lord Buzzkill", "Queen Maggot", "Sir Poopsalot", "The Dung Beetles",
-            "Swarm Master", "Captain Compost", "Baron Von Stink", "Lady Larva",
-            "Professor Poo", "General Gnat"
-        };
-        string[] clans = {
-            "Dung Dynasty", "Maggot Militia", "Poo Pirates", "Beetle Brigade",
-            "Swarm Squad", "Compost Crew", "Stink Syndicate", "Larva Legion",
-            "Poo Professors", "Gnat Gang"
-        };
-        var rng = new System.Random(42); // deterministic for consistency
-        for (int i = 0; i < names.Length; i++)
-        {
-            int districts = rng.Next(0, 6);
-            int level = rng.Next(1, 12);
-            int flies = rng.Next(1, 30);
-            _entries.Add(new LeaderboardEntry
-            {
-                PlayerName = names[i],
-                ClanName = clans[i],
-                Score = (districts * 100) + (level * 50) + (flies * 10),
-                Districts = districts,
-                ClanLevel = level,
-                TotalFlies = flies,
-                IsPlayer = false
-            });
-        }
-
-        _entries.Sort((a, b) => b.Score.CompareTo(a.Score));
-    }
-}
-```
-
-3. Create `Assets/Scripts/UI/LeaderboardUI.cs` — runtime-built leaderboard screen:
-```csharp
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-
-/// <summary>
-/// Runtime-built leaderboard overlay showing rankings.
-/// </summary>
-public class LeaderboardUI : MonoBehaviour
-{
-    public static LeaderboardUI Instance { get; private set; }
-
-    Canvas _canvas;
-    GameObject _panel;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start() => BuildUI();
-
-    void BuildUI()
-    {
-        _canvas = new GameObject("LeaderboardCanvas").AddComponent<Canvas>();
-        _canvas.transform.SetParent(transform);
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 870;
-        _canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        _canvas.gameObject.AddComponent<GraphicRaycaster>();
-
-        _panel = new GameObject("LeaderboardPanel");
-        _panel.transform.SetParent(_canvas.transform, false);
-        var rt = _panel.AddComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = new Vector2(25, 60); rt.offsetMax = new Vector2(-25, -40);
-        _panel.AddComponent<Image>().color = new Color(0.08f, 0.08f, 0.12f, 0.97f);
-
-        _panel.SetActive(false);
-    }
-
-    public void Show()
-    {
-        LeaderboardManager.Instance?.RefreshScore();
-        _panel.SetActive(true);
-        RebuildContent();
-    }
-
-    public void Hide() => _panel.SetActive(false);
-    public void Toggle() { if (_panel.activeSelf) Hide(); else Show(); }
-
-    void RebuildContent()
-    {
-        foreach (Transform child in _panel.transform)
-            Destroy(child.gameObject);
-
-        // Title
-        var title = CreateLabel(_panel.transform, "🏆 Leaderboard", 28, TextAlignmentOptions.Center);
-        var titleRT = title.GetComponent<RectTransform>();
-        titleRT.anchorMin = new Vector2(0, 1); titleRT.anchorMax = new Vector2(1, 1);
-        titleRT.pivot = new Vector2(0.5f, 1); titleRT.anchoredPosition = new Vector2(0, -10);
-        titleRT.sizeDelta = new Vector2(0, 40);
-
-        // Scroll area
-        var scrollGO = new GameObject("Scroll");
-        scrollGO.transform.SetParent(_panel.transform, false);
-        var scrollRT = scrollGO.AddComponent<RectTransform>();
-        scrollRT.anchorMin = new Vector2(0, 0.08f); scrollRT.anchorMax = new Vector2(1, 0.9f);
-        scrollRT.offsetMin = new Vector2(8, 0); scrollRT.offsetMax = new Vector2(-8, 0);
-        var scroll = scrollGO.AddComponent<ScrollRect>();
-        scrollGO.AddComponent<Image>().color = new Color(0, 0, 0, 0.15f);
-        scrollGO.AddComponent<Mask>().showMaskGraphic = true;
-
-        var content = new GameObject("Content");
-        content.transform.SetParent(scrollGO.transform, false);
-        var contentRT = content.AddComponent<RectTransform>();
-        contentRT.anchorMin = new Vector2(0, 1); contentRT.anchorMax = new Vector2(1, 1);
-        contentRT.pivot = new Vector2(0.5f, 1);
-        var vlg = content.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 4; vlg.padding = new RectOffset(4, 4, 4, 4);
-        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-        var fitter = content.AddComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        scroll.content = contentRT;
-        scroll.vertical = true; scroll.horizontal = false;
-
-        // Entries
-        var entries = LeaderboardManager.Instance?.Entries;
-        if (entries != null)
-        {
-            for (int i = 0; i < entries.Count; i++)
-                CreateEntryRow(content.transform, i + 1, entries[i]);
-        }
-
-        // Close button
-        var closeBtn = CreateButton(_panel.transform, "Close", () => Hide());
-        var closeRT = closeBtn.GetComponent<RectTransform>();
-        closeRT.anchorMin = new Vector2(0.3f, 0); closeRT.anchorMax = new Vector2(0.7f, 0.07f);
-        closeRT.offsetMin = Vector2.zero; closeRT.offsetMax = Vector2.zero;
-    }
-
-    void CreateEntryRow(Transform parent, int rank, LeaderboardManager.LeaderboardEntry entry)
-    {
-        var row = new GameObject($"Rank_{rank}");
-        row.transform.SetParent(parent, false);
-        var le = row.AddComponent<LayoutElement>();
-        le.preferredHeight = 50;
-        var rowImg = row.AddComponent<Image>();
-        rowImg.color = entry.IsPlayer
-            ? new Color(0.15f, 0.3f, 0.15f)
-            : (rank <= 3 ? new Color(0.25f, 0.22f, 0.1f) : new Color(0.15f, 0.15f, 0.18f));
-
-        // Rank medal
-        string medal = rank == 1 ? "🥇" : rank == 2 ? "🥈" : rank == 3 ? "🥉" : $"#{rank}";
-        var rankLabel = CreateLabel(row.transform, medal, 18, TextAlignmentOptions.Center);
-        var rankRT = rankLabel.GetComponent<RectTransform>();
-        rankRT.anchorMin = new Vector2(0, 0); rankRT.anchorMax = new Vector2(0.12f, 1);
-        rankRT.offsetMin = Vector2.zero; rankRT.offsetMax = Vector2.zero;
-
-        // Name + clan
-        string nameStr = entry.IsPlayer ? $"<b>{entry.PlayerName}</b>" : entry.PlayerName;
-        var nameLabel = CreateLabel(row.transform, $"{nameStr}\n<size=11><color=#AAA>{entry.ClanName}</color></size>", 15, TextAlignmentOptions.Left);
-        nameLabel.richText = true;
-        var nameRT = nameLabel.GetComponent<RectTransform>();
-        nameRT.anchorMin = new Vector2(0.13f, 0); nameRT.anchorMax = new Vector2(0.6f, 1);
-        nameRT.offsetMin = new Vector2(5, 0); nameRT.offsetMax = Vector2.zero;
-
-        // Score
-        var scoreLabel = CreateLabel(row.transform, $"{entry.Score}\n<size=11>pts</size>", 18, TextAlignmentOptions.Center);
-        scoreLabel.richText = true;
-        if (rank <= 3) scoreLabel.color = new Color(1f, 0.84f, 0f);
-        var scoreRT = scoreLabel.GetComponent<RectTransform>();
-        scoreRT.anchorMin = new Vector2(0.62f, 0); scoreRT.anchorMax = new Vector2(0.82f, 1);
-        scoreRT.offsetMin = Vector2.zero; scoreRT.offsetMax = Vector2.zero;
-
-        // Stats mini
-        var statsLabel = CreateLabel(row.transform, $"🏠{entry.Districts} 🪰{entry.TotalFlies}", 11, TextAlignmentOptions.Center);
-        statsLabel.color = new Color(0.7f, 0.7f, 0.7f);
-        var statsRT = statsLabel.GetComponent<RectTransform>();
-        statsRT.anchorMin = new Vector2(0.82f, 0); statsRT.anchorMax = new Vector2(1, 1);
-        statsRT.offsetMin = Vector2.zero; statsRT.offsetMax = Vector2.zero;
-    }
-
-    static TextMeshProUGUI CreateLabel(Transform parent, string text, int size, TextAlignmentOptions align)
-    {
-        var go = new GameObject("Label");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text = text; tmp.fontSize = size; tmp.alignment = align;
-        tmp.color = Color.white;
-        return tmp;
-    }
-
-    static GameObject CreateButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
-    {
-        var go = new GameObject("Btn_" + label);
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0.2f, 0.45f, 0.7f);
-        var btn = go.AddComponent<Button>();
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(onClick);
-        var tmp = new GameObject("Label").AddComponent<TextMeshProUGUI>();
-        tmp.transform.SetParent(go.transform, false);
-        tmp.text = label; tmp.fontSize = 16; tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.white;
-        var tmpRT = tmp.GetComponent<RectTransform>();
-        tmpRT.anchorMin = Vector2.zero; tmpRT.anchorMax = Vector2.one;
-        tmpRT.offsetMin = Vector2.zero; tmpRT.offsetMax = Vector2.zero;
-        return go;
-    }
-}
-```
-
-4. Add both to `GameManager.AutoBootstrap()`:
-```csharp
-go.AddComponent<LeaderboardManager>();
-go.AddComponent<LeaderboardUI>();
-```
-
-5. Add a 🏆 button to the HUD (alongside the ⚙ and 💎 buttons) that calls `LeaderboardUI.Instance.Toggle()`.
-
-6. Refresh → zero errors.
-
----
-
-### TASK 42 — Analytics Integration
-
-**Goal:** Track key game events using Unity Analytics (`com.unity.analytics` already in manifest). Uses reflection to avoid compile errors if the package is removed. Tracks: first_open, battle_won, battle_lost, district_captured, gem_purchase, level_up, tutorial_complete.
-
-**Files to create:** `Assets/Scripts/Managers/AnalyticsManager.cs`
-**Files to modify:** `Assets/Scripts/Core/GameManager.cs`
-
-**Steps:**
-
-1. Create `Assets/Scripts/Managers/AnalyticsManager.cs`:
-```csharp
-using System;
-using System.Collections.Generic;
-using UnityEngine;
-
-/// <summary>
-/// Wraps Unity Analytics via reflection — compiles with or without the package.
-/// Subscribes to UIEventBus to automatically fire analytics events.
-/// </summary>
-public class AnalyticsManager : MonoBehaviour
-{
-    public static AnalyticsManager Instance { get; private set; }
-
-    static bool _analyticsAvailable;
-    static Type _analyticsType;
-
-    // Cached delegates for clean unsubscribe
-    Action<object> _onBattleEnded;
-    Action<object> _onDistrictCaptured;
-    Action<object> _onLevelUp;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-        DetectPackage();
-    }
-
-    void Start()
-    {
-        if (!_analyticsAvailable)
-        {
-            Debug.Log("[AnalyticsManager] Unity Analytics not detected. Analytics disabled.");
-            return;
-        }
-
-        // Track first open
-        TrackEvent("first_open", new Dictionary<string, object>
-        {
-            ["platform"] = Application.platform.ToString(),
-            ["version"] = Application.version
-        });
-
-        // Subscribe to events
-        _onBattleEnded = data => OnBattleEnded(data);
-        _onDistrictCaptured = data => OnDistrictCaptured(data);
-        _onLevelUp = data => OnLevelUp(data);
-
-        UIEventBus.On(UIEvent.BattleEnded, _onBattleEnded);
-        UIEventBus.On(UIEvent.DistrictCaptured, _onDistrictCaptured);
-        UIEventBus.On(UIEvent.LevelUp, _onLevelUp);
-
-        Debug.Log("[AnalyticsManager] Analytics initialized and subscribed to events.");
-    }
-
-    void OnDisable()
-    {
-        if (_onBattleEnded != null)    UIEventBus.Off(UIEvent.BattleEnded, _onBattleEnded);
-        if (_onDistrictCaptured != null) UIEventBus.Off(UIEvent.DistrictCaptured, _onDistrictCaptured);
-        if (_onLevelUp != null)        UIEventBus.Off(UIEvent.LevelUp, _onLevelUp);
-    }
-
-    static void DetectPackage()
-    {
-        // Try Unity Analytics (Legacy via com.unity.analytics)
-        _analyticsType = Type.GetType("UnityEngine.Analytics.Analytics, UnityEngine.UnityAnalyticsModule");
-        _analyticsAvailable = _analyticsType != null;
-        if (!_analyticsAvailable)
-        {
-            // Try newer namespace
-            _analyticsType = Type.GetType("Unity.Services.Analytics.AnalyticsService, Unity.Services.Analytics");
-            _analyticsAvailable = _analyticsType != null;
-        }
-    }
-
-    /// <summary>Track a custom event with optional parameters.</summary>
-    public void TrackEvent(string eventName, Dictionary<string, object> parameters = null)
-    {
-        if (!_analyticsAvailable) return;
-        try
-        {
-            // Legacy: Analytics.CustomEvent(eventName, dict)
-            var customEvent = _analyticsType.GetMethod("CustomEvent",
-                new[] { typeof(string), typeof(Dictionary<string, object>) });
-            if (customEvent != null)
-            {
-                customEvent.Invoke(null, new object[] { eventName, parameters ?? new Dictionary<string, object>() });
-                Debug.Log($"[Analytics] Event: {eventName}");
-                return;
-            }
-
-            // Fallback: just log
-            Debug.Log($"[Analytics] (log only) Event: {eventName}");
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning($"[Analytics] Failed to track '{eventName}': {e.Message}");
-        }
-    }
-
-    // ---- Event handlers ----
-
-    void OnBattleEnded(object data)
-    {
-        // data might be bool (won) or could be a string/object
-        bool won = data is bool b && b;
-        TrackEvent(won ? "battle_won" : "battle_lost", new Dictionary<string, object>
-        {
-            ["clan_level"] = ClanManager.Instance?.ClanLevel ?? 0,
-            ["total_flies"] = ClanManager.Instance?.TotalFlies ?? 0
-        });
-    }
-
-    void OnDistrictCaptured(object data)
-    {
-        string districtName = data is District d ? d.Name : "unknown";
-        TrackEvent("district_captured", new Dictionary<string, object>
-        {
-            ["district_name"] = districtName,
-            ["total_districts"] = TerritoryManager.Instance?.GetPlayerDistricts().Count ?? 0
-        });
-    }
-
-    void OnLevelUp(object data)
-    {
-        int level = data is FlyInstance fly ? fly.Level : (ClanManager.Instance?.ClanLevel ?? 0);
-        TrackEvent("level_up", new Dictionary<string, object>
-        {
-            ["new_level"] = level
-        });
-    }
-
-    /// <summary>Track tutorial completion (call from TutorialManager).</summary>
-    public void TrackTutorialComplete()
-    {
-        TrackEvent("tutorial_complete", new Dictionary<string, object>
-        {
-            ["time_since_start"] = Time.realtimeSinceStartup
-        });
-    }
-
-    /// <summary>Track gem purchase (call from IAPManager).</summary>
-    public void TrackGemPurchase(string productId, int gemAmount)
-    {
-        TrackEvent("gem_purchase", new Dictionary<string, object>
-        {
-            ["product_id"] = productId,
-            ["gem_amount"] = gemAmount
-        });
-    }
-}
-```
-
-2. Add to `GameManager.AutoBootstrap()`:
-```csharp
-go.AddComponent<AnalyticsManager>();
-```
-
-3. Wire analytics into existing systems:
-   - In `TutorialManager` (when tutorial completes): `AnalyticsManager.Instance?.TrackTutorialComplete();`
-   - In `IAPManager.GrantGems()`: `AnalyticsManager.Instance?.TrackGemPurchase(productId, gems);`
-
-4. Refresh → zero errors.
-
----
-
-## PHASE 8 — Long-term Retention & Social
-
-### TASK 43 — Achievement System
-
-**Goal:** Track player milestones and award gems/skins as rewards. Achievements persist in save data.
-
-**New files:**
-- `Assets/Scripts/Data/AchievementRegistry.cs` — static registry of all achievements
-- `Assets/Scripts/Managers/AchievementManager.cs` — tracks progress, unlocks, awards
-- `Assets/Scripts/UI/AchievementPopup.cs` — runtime-built achievement list overlay
-
-**Steps:**
-
-1. Create `Assets/Scripts/Data/AchievementRegistry.cs`:
-```csharp
-using System.Collections.Generic;
-
-public static class AchievementRegistry
-{
-    public enum AchievementCategory { Combat, Territory, Clan, Economy, Collection }
-
-    public struct AchievementDef
-    {
-        public string Id;
-        public string DisplayName;
-        public string Description;
-        public AchievementCategory Category;
-        public int Target;           // e.g. win 10 battles
-        public int GemReward;
-        public string SkinReward;    // null if none
-    }
-
-    static readonly Dictionary<string, AchievementDef> _achievements = new()
-    {
-        ["first_blood"] = new() { Id = "first_blood", DisplayName = "First Blood",
-            Description = "Win your first battle.", Category = AchievementCategory.Combat,
-            Target = 1, GemReward = 10 },
-        ["battle_veteran"] = new() { Id = "battle_veteran", DisplayName = "Battle Veteran",
-            Description = "Win 25 battles.", Category = AchievementCategory.Combat,
-            Target = 25, GemReward = 50 },
-        ["warlord"] = new() { Id = "warlord", DisplayName = "Warlord",
-            Description = "Win 100 battles.", Category = AchievementCategory.Combat,
-            Target = 100, GemReward = 100, SkinReward = "crimson" },
-        ["landlord"] = new() { Id = "landlord", DisplayName = "Landlord",
-            Description = "Own 5 districts.", Category = AchievementCategory.Territory,
-            Target = 5, GemReward = 25 },
-        ["empire_builder"] = new() { Id = "empire_builder", DisplayName = "Empire Builder",
-            Description = "Own 15 districts.", Category = AchievementCategory.Territory,
-            Target = 15, GemReward = 75 },
-        ["world_domination"] = new() { Id = "world_domination", DisplayName = "World Domination",
-            Description = "Own all 49 districts.", Category = AchievementCategory.Territory,
-            Target = 49, GemReward = 200, SkinReward = "royal" },
-        ["swarm_leader"] = new() { Id = "swarm_leader", DisplayName = "Swarm Leader",
-            Description = "Have 20 flies in your clan.", Category = AchievementCategory.Clan,
-            Target = 20, GemReward = 30 },
-        ["elite_force"] = new() { Id = "elite_force", DisplayName = "Elite Force",
-            Description = "Promote 5 flies to Elite.", Category = AchievementCategory.Clan,
-            Target = 5, GemReward = 60 },
-        ["big_spender"] = new() { Id = "big_spender", DisplayName = "Big Spender",
-            Description = "Spend 5000 PooCoins total.", Category = AchievementCategory.Economy,
-            Target = 5000, GemReward = 40 },
-        ["gem_collector"] = new() { Id = "gem_collector", DisplayName = "Gem Collector",
-            Description = "Accumulate 500 gems (lifetime).", Category = AchievementCategory.Economy,
-            Target = 500, GemReward = 50 },
-        ["fashionista"] = new() { Id = "fashionista", DisplayName = "Fashionista",
-            Description = "Unlock 5 fly skins.", Category = AchievementCategory.Collection,
-            Target = 5, GemReward = 35 },
-        ["legendary_hunter"] = new() { Id = "legendary_hunter", DisplayName = "Legendary Hunter",
-            Description = "Own 3 legendary items.", Category = AchievementCategory.Collection,
-            Target = 3, GemReward = 80, SkinReward = "golden" },
-        ["clan_level_10"] = new() { Id = "clan_level_10", DisplayName = "Rising Power",
-            Description = "Reach clan level 10.", Category = AchievementCategory.Clan,
-            Target = 10, GemReward = 50 },
-        ["boss_slayer"] = new() { Id = "boss_slayer", DisplayName = "Boss Slayer",
-            Description = "Defeat 5 boss districts.", Category = AchievementCategory.Combat,
-            Target = 5, GemReward = 60 },
-    };
-
-    public static AchievementDef? Get(string id)
-        => _achievements.TryGetValue(id, out var def) ? def : null;
-    public static IReadOnlyDictionary<string, AchievementDef> All => _achievements;
-}
-```
-
-2. Create `Assets/Scripts/Managers/AchievementManager.cs`:
-- Singleton with `Instance`, add to `GameManager.AutoBootstrap`
-- Tracks counters: `BattlesWon`, `DistrictsOwned`, `TotalFlies`, `EliteCount`, `CoinsSpent`, `GemsEarned`, `SkinsUnlocked`, `LegendaryOwned`, `ClanLevel`, `BossesDefeated`
-- `Dictionary<string, bool> _unlocked` for completed achievements
-- Subscribe to UIEvents: `BattleEnded`, `DistrictCaptured`, `LevelUp`, `ClanUpdated`
-- `CheckAll()` method iterates all achievements, compares counter to target, awards if newly unlocked
-- Awards: `ResourceManager.AddGems()`, `SkinSelectPopup.UnlockSkin()`, `ToastManager.ShowToast()`
-- `SaveData` class with counters + unlocked list, wired into `SaveSystem`
-- `GetProgress(string achievementId)` returns 0.0–1.0 float for UI
-
-3. Create `Assets/Scripts/UI/AchievementPopup.cs`:
-- Runtime-built overlay (sortingOrder = 880)
-- Scrollable list grouped by category
-- Each row: icon area, name, description, progress bar, gem reward, check mark if complete
-- Green tint for completed rows, gray for locked
-- Add button to SettingsScreenController HUD: `★` at (0.60, 0.94)–(0.68, 0.98)
-
-4. Wire into SaveSystem: add `AchievementManager.SaveData` to `SaveFile`, save/load calls.
-5. Refresh → zero errors.
-
----
-
-### TASK 44 — Daily Missions
-
-**Goal:** 3 rotating daily objectives that reward PooCoins and gems when completed.
-
-**New files:**
-- `Assets/Scripts/Data/MissionRegistry.cs` — pool of possible missions
-- `Assets/Scripts/Managers/DailyMissionManager.cs` — picks 3 daily, tracks progress
-- `Assets/Scripts/UI/DailyMissionUI.cs` — runtime-built mission panel
-
-**Steps:**
-
-1. Create `Assets/Scripts/Data/MissionRegistry.cs`:
-```csharp
-using System.Collections.Generic;
-
-public static class MissionRegistry
-{
-    public enum MissionType { WinBattles, CaptureDistricts, TrainFlies, SpendCoins, CollectPoo, HatchEggs, UpgradeGear, PromoteFly }
-
-    public struct MissionDef
-    {
-        public string Id;
-        public string DisplayTemplate; // e.g. "Win {0} battles"
-        public MissionType Type;
-        public int MinTarget, MaxTarget;
-        public int CoinReward;
-        public int GemReward;
-    }
-
-    static readonly List<MissionDef> _pool = new()
-    {
-        new() { Id = "win_battles", DisplayTemplate = "Win {0} battles", Type = MissionType.WinBattles,
-            MinTarget = 1, MaxTarget = 5, CoinReward = 100, GemReward = 5 },
-        new() { Id = "capture_districts", DisplayTemplate = "Capture {0} districts", Type = MissionType.CaptureDistricts,
-            MinTarget = 1, MaxTarget = 3, CoinReward = 150, GemReward = 10 },
-        new() { Id = "train_flies", DisplayTemplate = "Train {0} flies", Type = MissionType.TrainFlies,
-            MinTarget = 2, MaxTarget = 5, CoinReward = 80, GemReward = 3 },
-        new() { Id = "spend_coins", DisplayTemplate = "Spend {0} PooCoins", Type = MissionType.SpendCoins,
-            MinTarget = 200, MaxTarget = 500, CoinReward = 120, GemReward = 5 },
-        new() { Id = "collect_poo", DisplayTemplate = "Discover {0} poos", Type = MissionType.CollectPoo,
-            MinTarget = 3, MaxTarget = 8, CoinReward = 60, GemReward = 3 },
-        new() { Id = "hatch_eggs", DisplayTemplate = "Hatch {0} egg batches", Type = MissionType.HatchEggs,
-            MinTarget = 1, MaxTarget = 3, CoinReward = 90, GemReward = 5 },
-        new() { Id = "upgrade_gear", DisplayTemplate = "Upgrade gear {0} times", Type = MissionType.UpgradeGear,
-            MinTarget = 1, MaxTarget = 3, CoinReward = 100, GemReward = 5 },
-        new() { Id = "promote_fly", DisplayTemplate = "Promote {0} fly to Elite", Type = MissionType.PromoteFly,
-            MinTarget = 1, MaxTarget = 1, CoinReward = 200, GemReward = 15 },
-    };
-
-    public static IReadOnlyList<MissionDef> Pool => _pool;
-}
-```
-
-2. Create `Assets/Scripts/Managers/DailyMissionManager.cs`:
-- Singleton, added to AutoBootstrap
-- On Start: check if `_lastRefreshDate != today` → pick 3 random missions from pool with random targets
-- `ActiveMission` struct: MissionDef ref, target, progress, claimed bool
-- Subscribe to UIEvents to increment progress (BattleEnded → WinBattles, DistrictCaptured → CaptureDistricts, etc.)
-- `ClaimReward(int index)` grants coins/gems if progress >= target and not yet claimed
-- `SaveData` with active missions, progress, lastRefreshDate
-- Emits new UIEvent: `MissionUpdated`, `MissionCompleted`
-
-3. Create `Assets/Scripts/UI/DailyMissionUI.cs`:
-- Runtime-built panel (sortingOrder = 875)
-- Shows 3 mission cards with progress bar, description, reward, Claim button
-- Claim button green when complete, gray when claimed
-- Timer showing hours until reset
-- Add 📋 button to SettingsScreenController HUD
-
-4. Add `MissionUpdated`, `MissionCompleted` to UIEvent enum.
-5. Wire SaveData into SaveSystem.
-6. Refresh → zero errors.
-
----
-
-### TASK 45 — Fly Breeding (Fusion)
-
-**Goal:** Combine 2 flies of the same role into 1 stronger fly. Costs PooCoins. The new fly inherits the better stats from each parent plus a bonus.
-
-**New files:**
-- `Assets/Scripts/UI/BreedingUI.cs` — runtime-built breeding popup
-
-**Modify:**
-- `ClanManager.cs` — add `BreedFlies(string flyId1, string flyId2)` method
-- `Constants.cs` — add breeding constants
-
-**Steps:**
-
-1. Add constants to `Constants.cs`:
-```csharp
-public const int   BREEDING_COST       = 300;    // PooCoins
-public const float BREEDING_STAT_BONUS = 0.10f;  // +10% on top of best parent stat
-public const int   BREEDING_MIN_LEVEL  = 5;      // both parents must be level 5+
-```
-
-2. Add `BreedFlies()` to `ClanManager.cs`:
-```csharp
-public FlyInstance BreedFlies(string flyId1, string flyId2)
-{
-    var fly1 = _flies.FirstOrDefault(f => f.InstanceId == flyId1);
-    var fly2 = _flies.FirstOrDefault(f => f.InstanceId == flyId2);
-    if (fly1 == null || fly2 == null) return null;
-    if (fly1.Role != fly2.Role) return null;
-    if (fly1.Level < Constants.BREEDING_MIN_LEVEL || fly2.Level < Constants.BREEDING_MIN_LEVEL) return null;
-    if (!ResourceManager.Instance.SpendPooCoins(Constants.BREEDING_COST)) return null;
-
-    // Offspring: best of each stat + bonus
-    var offspring = CreateFly(fly1.Role);
-    offspring.Level = Mathf.Max(fly1.Level, fly2.Level);
-    offspring.XP = offspring.Level * 100; // set XP to match level
-    offspring.Attack = Mathf.RoundToInt(Mathf.Max(fly1.Attack, fly2.Attack) * (1f + Constants.BREEDING_STAT_BONUS));
-    offspring.Defense = Mathf.RoundToInt(Mathf.Max(fly1.Defense, fly2.Defense) * (1f + Constants.BREEDING_STAT_BONUS));
-    offspring.Speed = Mathf.RoundToInt(Mathf.Max(fly1.Speed, fly2.Speed) * (1f + Constants.BREEDING_STAT_BONUS));
-    offspring.MaxHealth = Mathf.RoundToInt(Mathf.Max(fly1.MaxHealth, fly2.MaxHealth) * (1f + Constants.BREEDING_STAT_BONUS));
-    offspring.CurrentHealth = offspring.MaxHealth;
-
-    // Remove parents, add offspring
-    _flies.Remove(fly1);
-    _flies.Remove(fly2);
-    _flies.Add(offspring);
-
-    UIEventBus.Emit(UIEvent.ClanUpdated);
-    ToastManager.Instance?.ShowToast($"New {offspring.Role} bred! ATK:{offspring.Attack} DEF:{offspring.Defense}", ToastType.Success);
-    return offspring;
-}
-```
-
-3. Create `Assets/Scripts/UI/BreedingUI.cs`:
-- Runtime-built popup (sortingOrder = 835)
-- Two fly selection slots (tap to pick from eligible flies)
-- Preview panel showing offspring stats
-- "Breed" button with cost display
-- Filter: only same-role, level 5+ flies shown
-- Add "Breed" button to ClanScreenController bottom bar
-
-4. Add `FlyBred` to UIEvent enum.
-5. Refresh → zero errors.
-
----
-
-### TASK 46 — Offline Progress
-
-**Goal:** When the player returns after being away, calculate and award PooCoins earned passively from owned districts while offline.
-
-**New files:**
-- `Assets/Scripts/UI/OfflineRewardPopup.cs` — shows "Welcome back!" with earned resources
-
-**Modify:**
-- `SaveSystem.cs` — store `LastSaveTimestamp`
-- `GameManager.cs` — calculate offline earnings on load
-
-**Steps:**
-
-1. Add to `Constants.cs`:
-```csharp
-public const float OFFLINE_COINS_PER_DISTRICT_PER_HOUR = 10f;
-public const float OFFLINE_MAX_HOURS = 8f;  // cap at 8 hours
-```
-
-2. Add `LastSaveTimestamp` (long, Unix epoch) to `SaveFile` in `SaveSystem.cs`. Set on Save, read on Load.
-
-3. In `GameManager.Start()`, after `SaveSystem.Load()`:
-- Calculate seconds elapsed since `LastSaveTimestamp`
-- Cap at `OFFLINE_MAX_HOURS * 3600`
-- Compute coins: `districts * OFFLINE_COINS_PER_DISTRICT_PER_HOUR * hours`
-- If coins > 0, show `OfflineRewardPopup` and grant coins
-
-4. Create `Assets/Scripts/UI/OfflineRewardPopup.cs`:
-- Runtime-built centered panel (sortingOrder = 900)
-- "Welcome back!" title
-- Shows time away, districts owned, coins earned
-- "Collect" button grants coins and closes
-- "Watch Ad for 2×" button doubles the reward (calls AdManager)
-- Auto-dismiss after 10 seconds if not interacted
-
-5. Refresh → zero errors.
-
----
-
-### TASK 47 — Collection Codex
-
-**Goal:** A screen that tracks all flies owned, gear collected, skins unlocked, and districts captured — ever. Shows completion %.
-
-**New files:**
-- `Assets/Scripts/Managers/CodexManager.cs` — tracks lifetime collections
-- `Assets/Scripts/UI/CodexUI.cs` — runtime-built codex overlay
-
-**Steps:**
-
-1. Create `Assets/Scripts/Managers/CodexManager.cs`:
-- Singleton, added to AutoBootstrap
-- `HashSet<string>` for: `DiscoveredGear`, `DiscoveredSkins`, `CapturedDistricts`, `ReachedFlyRoles`
-- Subscribes to UIEvents: `BattleItemDropped/Grabbed`, `DistrictCaptured`, `ClanUpdated`
-- Auto-discovers on event fire
-- `GetCompletionPercent()` = total discovered / total possible
-- `SaveData` class wired into SaveSystem
-
-2. Create `Assets/Scripts/UI/CodexUI.cs`:
-- Runtime-built overlay (sortingOrder = 885)
-- Tabs: Gear, Skins, Districts, Flies
-- Each tab: scrollable grid of items
-- Discovered items: colored with name. Undiscovered: gray silhouette with "???"
-- Overall completion % at the top
-- Add 📖 button to SettingsScreenController HUD
-
-3. Wire SaveData into SaveSystem.
-4. Add `CodexUpdated` to UIEvent enum.
-5. Refresh → zero errors.
-
----
-
-### TASK 48 — Boss Rush Mode
-
-**Goal:** A special mode where the player fights all boss districts back-to-back for bonus rewards. Unlocked after beating 3+ boss districts.
-
-**New files:**
-- `Assets/Scripts/Managers/BossRushManager.cs` — manages boss rush flow
-- `Assets/Scripts/UI/BossRushUI.cs` — entry UI and progress display
-
-**Steps:**
-
-1. Create `Assets/Scripts/Managers/BossRushManager.cs`:
-- Singleton, added to AutoBootstrap
-- `IsUnlocked` — true if player has beaten 3+ boss districts
-- `StartBossRush()` — queues all captured boss districts as sequential battles
-- After each win: bonus coins + chance for legendary drop
-- If player loses: rush ends, rewards earned so far are kept
-- `CurrentRound`, `TotalRounds`, `BonusCoinsEarned`
-- Listens to `BattleEnded` to advance to next round
-
-2. Create `Assets/Scripts/UI/BossRushUI.cs`:
-- Runtime-built overlay (sortingOrder = 890)
-- Shows unlock status, best streak, total bosses
-- "Start Boss Rush" button
-- During rush: progress bar (Round X/Y), accumulated rewards
-- End screen: total rewards summary with "Collect" button
-- Add 🏆 button to SettingsScreenController HUD (visible only when unlocked)
-
-3. Add `BossRushStarted`, `BossRushEnded` to UIEvent enum.
-4. Refresh → zero errors.
-
----
-
-### TASK 49 — Stat Respec
-
-**Goal:** Spend PooCoins to re-randomize a fly's base stats. Keeps level, XP, and equipment but rolls new ATK/DEF/SPD/HP.
-
-**Modify:**
-- `ClanManager.cs` — add `RespecFly(string flyId)` method
-- `Constants.cs` — add respec cost
-- `ClanScreenController.cs` — add Respec button to fly cards
-
-**Steps:**
-
-1. Add to `Constants.cs`:
-```csharp
-public const int RESPEC_COST = 150;  // PooCoins
-```
-
-2. Add `RespecFly()` to `ClanManager.cs`:
-```csharp
-public bool RespecFly(string flyId)
-{
-    var fly = _flies.FirstOrDefault(f => f.InstanceId == flyId);
-    if (fly == null) return false;
-    if (!ResourceManager.Instance.SpendPooCoins(Constants.RESPEC_COST)) return false;
-
-    var data = GetRoleData(fly.Role);
-    float levelMult = 1f + (fly.Level - 1) * 0.1f;
-    float eliteMult = fly.IsElite ? Constants.ELITE_STAT_MULTIPLIER : 1f;
-    float variance = 0.2f; // ±20% randomization
-
-    fly.Attack    = Mathf.RoundToInt(data.BaseAttack  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
-    fly.Defense   = Mathf.RoundToInt(data.BaseDefense * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
-    fly.Speed     = Mathf.RoundToInt(data.BaseSpeed   * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
-    fly.MaxHealth = Mathf.RoundToInt(data.BaseHealth  * levelMult * eliteMult * Random.Range(1f - variance, 1f + variance));
-    fly.CurrentHealth = fly.MaxHealth;
-
-    UIEventBus.Emit(UIEvent.ClanUpdated);
-    ToastManager.Instance?.ShowToast($"Stats rerolled! ATK:{fly.Attack} DEF:{fly.Defense} SPD:{fly.Speed}", ToastType.Info);
-    return true;
-}
-```
-
-3. In `ClanScreenController.cs`, add a "Respec" button (🎲) on fly cards next to Train button. Calls `ClanManager.Instance.RespecFly(flyId)` then refreshes.
-
-4. Refresh → zero errors.
-
----
-
-### TASK 50 — Rate App Prompt
-
-**Goal:** Show a "Rate this app" prompt after key milestones (5 battles won, first boss kill, clan level 5). Only shows once per milestone. Uses Unity's `Application.RequestStoreReview()` via reflection.
-
-**New files:**
-- `Assets/Scripts/Managers/RateAppManager.cs` — tracks milestones and triggers prompt
-
-**Steps:**
-
-1. Create `Assets/Scripts/Managers/RateAppManager.cs`:
-```csharp
-using System.Collections.Generic;
-using UnityEngine;
-
-public class RateAppManager : MonoBehaviour
-{
-    public static RateAppManager Instance { get; private set; }
-
-    HashSet<string> _shownPrompts = new();
-    bool _hasRated;
-
-    void Awake()
-    {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
-        Instance = this;
-    }
-
-    void Start()
-    {
-        UIEventBus.On(UIEvent.BattleEnded, OnBattleEnded);
-        UIEventBus.On(UIEvent.LevelUp, OnLevelUp);
-    }
-
-    void OnDisable()
-    {
-        UIEventBus.Off(UIEvent.BattleEnded, OnBattleEnded);
-        UIEventBus.Off(UIEvent.LevelUp, OnLevelUp);
-    }
-
-    void OnBattleEnded(object data)
-    {
-        if (_hasRated) return;
-        bool won = data is bool b && b;
-        if (!won) return;
-        int winsNeeded = AchievementManager.Instance?.GetCounter("battles_won") ?? 0;
-        if (winsNeeded >= 5) TryShow("5_wins");
-        if (winsNeeded >= 1)
-        {
-            // Check if boss kill
-            var district = TerritoryManager.Instance?.GetDistrict(BattleManager.Instance?.PendingDistrictId);
-            if (district?.IsBoss == true) TryShow("first_boss");
-        }
-    }
-
-    void OnLevelUp(object data)
-    {
-        if (_hasRated) return;
-        int level = ClanManager.Instance?.ClanLevel ?? 0;
-        if (level >= 5) TryShow("clan_level_5");
-    }
-
-    void TryShow(string milestoneId)
-    {
-        if (_hasRated || _shownPrompts.Contains(milestoneId)) return;
-        _shownPrompts.Add(milestoneId);
-        ShowRatePrompt();
-    }
-
-    void ShowRatePrompt()
-    {
-        // Build a simple popup asking to rate
-        // ... (runtime-built UI with Yes/No/Later)
-        // On Yes: call RequestStoreReview() via reflection, set _hasRated = true
-        // On No: set _hasRated = true
-        // On Later: do nothing (will prompt at next milestone)
-    }
-
-    void RequestStoreReview()
-    {
-#if UNITY_IOS || UNITY_ANDROID
-        try
-        {
-            var reviewType = System.Type.GetType("UnityEngine.iOS.Device, UnityEngine.CoreModule");
-            reviewType?.GetMethod("RequestStoreReview")?.Invoke(null, null);
-        }
-        catch { /* fallback: open store URL */ }
-#endif
-    }
-
-    // Save/Load: _shownPrompts, _hasRated
-    [System.Serializable]
-    public class SaveData
-    {
-        public List<string> ShownPrompts = new();
-        public bool HasRated;
-    }
-    public SaveData GetSaveData() => new() { ShownPrompts = new(_shownPrompts), HasRated = _hasRated };
-    public void LoadSaveData(SaveData data) { if (data == null) return; _shownPrompts = new(data.ShownPrompts); _hasRated = data.HasRated; }
-}
-```
-
-2. Add to `GameManager.AutoBootstrap`.
-3. Wire SaveData into SaveSystem.
-4. Refresh → zero errors.
 
 ---
 

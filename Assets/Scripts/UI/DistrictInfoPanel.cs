@@ -47,6 +47,13 @@ public class DistrictInfoPanel : MonoBehaviour
         ClaimButton?.onClick.AddListener(OnClaim);
         SpotPooButton?.onClick.AddListener(OnSpotPoo);
         WatchAdButton?.onClick.AddListener(OnWatchAd);
+
+        // Auto-create FlyDeployPanel if not assigned (e.g. scene-wired panel)
+        if (DeployPanel == null)
+        {
+            var deployGo = new GameObject("FlyDeployPanel");
+            DeployPanel = deployGo.AddComponent<FlyDeployPanel>();
+        }
     }
 
     public void Show(District d)
@@ -85,7 +92,7 @@ public class DistrictInfoPanel : MonoBehaviour
         AttackButton?.gameObject.SetActive(isEnemy && !locked);
         ClaimButton?.gameObject.SetActive(isNeutral && !locked);
         SpotPooButton?.gameObject.SetActive(!locked && pooCount < Constants.MAX_POOS_PER_DISTRICT);
-        WatchAdButton?.gameObject.SetActive((isEnemy || isNeutral) && !locked);
+        WatchAdButton?.gameObject.SetActive(FeatureFlags.ADS_ENABLED && (isEnemy || isNeutral) && !locked);
     }
 
     public void Hide()
@@ -188,7 +195,7 @@ public class DistrictInfoPanel : MonoBehaviour
         if (poo != null)
         {
             string clanId = ClanManager.Instance?.ClanId ?? "player_clan";
-            PooManager.Instance.ClaimPoo(poo, clanId);
+            PooManager.Instance?.ClaimPoo(poo, clanId);
             UIEventBus.Emit(UIEvent.PooDiscovered, poo);
             Debug.Log($"[InfoPanel] Spotted poo in {_current.Name}!");
         }
@@ -214,7 +221,10 @@ public class DistrictInfoPanel : MonoBehaviour
     {
         var roles = ClanManager.Instance?.AllRoles;
         var enemies = new System.Collections.Generic.List<FlyInstance>();
-        int slots = (_current != null && _current.IsBoss) ? 7 : Constants.BATTLE_SLOTS;
+        int playerFlies = ClanManager.Instance?.TotalFlies ?? 1;
+        // Scale enemy count: match player count for easy districts, +1 for harder ones
+        int baseSlots = Mathf.Clamp(playerFlies + difficulty - 1, 1, Constants.BATTLE_SLOTS);
+        int slots = (_current != null && _current.IsBoss) ? baseSlots + 2 : baseSlots;
         for (int i = 0; i < slots; i++)
         {
             var role = roles != null && roles.Length > 0
@@ -235,4 +245,17 @@ public class DistrictInfoPanel : MonoBehaviour
         }
         return enemies;
     }
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        if (DistrictNameText == null) Debug.LogWarning("[DistrictInfoPanel] DistrictNameText not assigned!", this);
+        if (OwnerText == null)        Debug.LogWarning("[DistrictInfoPanel] OwnerText not assigned!", this);
+        if (PooCountText == null)     Debug.LogWarning("[DistrictInfoPanel] PooCountText not assigned!", this);
+        if (BonusText == null)        Debug.LogWarning("[DistrictInfoPanel] BonusText not assigned!", this);
+        if (SendFliesButton == null)  Debug.LogWarning("[DistrictInfoPanel] SendFliesButton not assigned!", this);
+        if (AttackButton == null)     Debug.LogWarning("[DistrictInfoPanel] AttackButton not assigned!", this);
+        if (ClaimButton == null)      Debug.LogWarning("[DistrictInfoPanel] ClaimButton not assigned!", this);
+    }
+#endif
 }

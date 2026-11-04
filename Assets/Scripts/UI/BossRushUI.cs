@@ -73,7 +73,7 @@ public class BossRushUI : MonoBehaviour
             lockRT.anchorMin = new Vector2(0.05f, 0.4f); lockRT.anchorMax = new Vector2(0.95f, 0.6f);
             lockRT.offsetMin = Vector2.zero; lockRT.offsetMax = Vector2.zero;
         }
-        else if (active)
+        else if (active && BossRushManager.Instance != null)
         {
             int cur = BossRushManager.Instance.CurrentRound;
             int total = BossRushManager.Instance.TotalRounds;

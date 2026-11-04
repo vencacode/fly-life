@@ -11,14 +11,14 @@ public class PooMarker : MonoBehaviour
     public SpriteRenderer Icon;
 
     [Header("Float animation")]
-    public float FloatAmplitude = 0.15f;
-    public float FloatSpeed     = 1.2f;
+    public float FloatAmplitude = 0.03f;
+    public float FloatSpeed     = 0.8f;
 
-    Vector3 _basePos;
+    Vector3 _baseLocalPos;
 
     void Start()
     {
-        _basePos = transform.position;
+        _baseLocalPos = transform.localPosition;
         // Assign procedural poo sprite if no sprite assigned
         if (Icon && Icon.sprite == null)
             Icon.sprite = PooSpriteGenerator.GetPooSprite();
@@ -27,8 +27,8 @@ public class PooMarker : MonoBehaviour
 
     void Update()
     {
-        float y = Mathf.Sin(Time.time * FloatSpeed + _basePos.x) * FloatAmplitude;
-        transform.position = _basePos + new Vector3(0, y, 0);
+        float y = Mathf.Sin(Time.time * FloatSpeed + _baseLocalPos.x) * FloatAmplitude;
+        transform.localPosition = _baseLocalPos + new Vector3(0, y, 0);
     }
 
     public void SetType(string pooName)

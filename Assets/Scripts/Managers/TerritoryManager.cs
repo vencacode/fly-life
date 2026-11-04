@@ -17,6 +17,7 @@ public class TerritoryManager : MonoBehaviour
     private Dictionary<string, District> _districts = new();
 
     public IReadOnlyDictionary<string, District> Districts => _districts;
+    public int TotalDistricts => _districts.Count;
 
     void Awake()
     {
@@ -50,7 +51,11 @@ public class TerritoryManager : MonoBehaviour
 
             int ring = Mathf.Max(Mathf.Abs(x - 3), Mathf.Abs(y - 3)); // Chebyshev distance from center (3,3)
             bool isBoss = (x == 0 || x == GridWidth - 1) && (y == 0 || y == GridHeight - 1);
-            int difficulty = isBoss ? 8 : (ring == 0 ? 1 : ring == 1 ? 3 : ring == 2 ? 5 : 7);
+            int difficulty = isBoss ? Constants.BOSS_DIFFICULTY
+                : (ring == 0 ? Constants.RING0_DIFFICULTY
+                :  ring == 1 ? Constants.RING1_DIFFICULTY
+                :  ring == 2 ? Constants.RING2_DIFFICULTY
+                :              Constants.RING3_DIFFICULTY);
 
             string id = $"district_{x}_{y}";
             _districts[id] = new District
@@ -64,7 +69,7 @@ public class TerritoryManager : MonoBehaviour
                 Ring            = ring,
                 DifficultyLevel = difficulty,
                 IsBoss          = isBoss,
-                OwnerId         = ring > 0 ? $"enemy_clan_{ring}" : string.Empty
+                OwnerId         = ring > 1 ? $"enemy_clan_{ring}" : string.Empty
             };
         }
         Debug.Log($"[TerritoryManager] Generated {_districts.Count} themed districts.");
@@ -173,5 +178,10 @@ public class TerritoryManager : MonoBehaviour
         foreach (var (id, ownerId) in saved)
             if (_districts.ContainsKey(id))
                 _districts[id].OwnerId = ownerId;
+
+        // Sanitize: ring 0-1 should never be enemy-owned (old saves may have this)
+        foreach (var d in _districts.Values)
+            if (d.Ring <= 1 && !string.IsNullOrEmpty(d.OwnerId) && d.OwnerId.StartsWith("enemy_clan"))
+                d.OwnerId = string.Empty;
     }
 }

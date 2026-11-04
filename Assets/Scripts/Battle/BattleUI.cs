@@ -30,8 +30,23 @@ public class BattleUI : MonoBehaviour
     GameObject      _itemDropButton;
     TextMeshProUGUI _itemDropLabel;
 
+    Canvas _canvas;
+
     void Awake()
     {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    void OnDestroy()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+    {
+        if (scene.name != Constants.SCENE_BATTLE) return;
+        // Destroy old canvas from previous battle
+        if (_canvas != null) Object.Destroy(_canvas.gameObject);
         BuildUI();
     }
 
@@ -73,16 +88,20 @@ public class BattleUI : MonoBehaviour
 
     void OnItemDropped(object data)
     {
-        var item = (EquipmentData)data;
+        var dropId = data as string;
+        if (string.IsNullOrEmpty(dropId)) return;
+        var itemDef = EquipmentRegistry.Get(dropId);
+        string itemName = itemDef?.ItemName ?? dropId;
+
         _itemDropButton.SetActive(true);
-        _itemDropLabel.text = $"GRAB: {item.ItemName}";
+        _itemDropLabel.text = $"GRAB: {itemName}";
 
         // Wire tap
         var btn = _itemDropButton.GetComponent<Button>();
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(() =>
         {
-            BattleManager.Instance?.TryGrabDrop(item);
+            InventoryManager.Instance?.AddItem(dropId);
             _itemDropButton.SetActive(false);
         });
     }
@@ -190,7 +209,8 @@ public class BattleUI : MonoBehaviour
     void BuildUI()
     {
         var canvasGo = new GameObject("BattleCanvas");
-        var canvas = canvasGo.AddComponent<Canvas>();
+        _canvas = canvasGo.AddComponent<Canvas>();
+        var canvas = _canvas;
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 10;
         var scaler = canvasGo.AddComponent<CanvasScaler>();
@@ -397,16 +417,4 @@ public class BattleUI : MonoBehaviour
         return go;
     }
 
-    // ---- Bootstrap ----
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void AutoBootstrap()
-    {
-        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != Constants.SCENE_BATTLE)
-            return;
-
-        var go = new GameObject("__BattleUI__");
-        go.AddComponent<BattleUI>();
-        Debug.Log("[BattleUI] Auto-bootstrapped in Battle scene.");
-    }
 }

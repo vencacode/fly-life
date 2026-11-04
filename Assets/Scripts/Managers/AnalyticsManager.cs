@@ -27,6 +27,12 @@ public class AnalyticsManager : MonoBehaviour
 
     void Start()
     {
+        if (!FeatureFlags.ANALYTICS_ENABLED)
+        {
+            Debug.Log("[AnalyticsManager] Analytics disabled via FeatureFlags.");
+            return;
+        }
+
         if (!_analyticsAvailable)
         {
             Debug.Log("[AnalyticsManager] Unity Analytics not detected. Analytics disabled.");
@@ -74,6 +80,7 @@ public class AnalyticsManager : MonoBehaviour
     /// <summary>Track a custom event with optional parameters.</summary>
     public void TrackEvent(string eventName, Dictionary<string, object> parameters = null)
     {
+        if (!FeatureFlags.ANALYTICS_ENABLED) return;
         if (!_analyticsAvailable)
         {
             Debug.Log($"[Analytics] (log only) Event: {eventName}");

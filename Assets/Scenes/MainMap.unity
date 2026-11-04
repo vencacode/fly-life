@@ -218,12 +218,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MapCamera
   DragSpeed: 1.5
   MinZoom: 3
-  MaxZoom: 12
+  MaxZoom: 40
   ZoomSpeed: 0.5
-  MinX: 20
-  MaxX: 20
-  MinY: 20
-  MaxY: 20
+  MinX: -2
+  MaxX: 72
+  MinY: -2
+  MaxY: 72
 --- !u!20 &12633378
 Camera:
   m_ObjectHideFlags: 0
@@ -259,7 +259,7 @@ Camera:
   far clip plane: 200
   field of view: 60
   orthographic: 1
-  orthographic size: 32
+  orthographic size: 35
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -284,7 +284,7 @@ Transform:
   m_GameObject: {fileID: 12633376}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 20, y: 20, z: -50}
+  m_LocalPosition: {x: 31, y: 31, z: -50}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3739,7 +3739,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1716843854}
   - component: {fileID: 1716843853}
-  - component: {fileID: 1716843858}
   m_Layer: 0
   m_Name: MapManager
   m_TagString: Untagged
@@ -3779,26 +3778,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1716843858
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1716843852}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7d1e8b275bd541149868b07f1cd2db75, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PooManager
-  AllPooTypes:
-  - {fileID: 11400000, guid: 0edf09df79353d94a86d422421ff188f, type: 2}
-  - {fileID: 11400000, guid: 995f433a0283835499de081fa54f31d2, type: 2}
-  - {fileID: 11400000, guid: 07648033e29fc614cb91548169dd79a3, type: 2}
-  SpawnIntervalSeconds: 30
-  MaxPoosOnMap: 50
-  PooMarkerPrefab: {fileID: 4130162007514726813, guid: b49c8f19aeaa4b7409b766e87a311500, type: 3}
-  MarkersParent: {fileID: 528840196}
 --- !u!1 &1767019798
 GameObject:
   m_ObjectHideFlags: 0
@@ -4258,7 +4237,7 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
+    rgba: 4283216588
   m_fontColor: {r: 0.8, g: 0.7, b: 0.3, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
@@ -4271,7 +4250,7 @@ MonoBehaviour:
   m_spriteAsset: {fileID: 0}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
-  m_TextStyleHashCode: 0
+  m_TextStyleHashCode: -1183493901
   m_overrideHtmlColors: 0
   m_faceColor:
     serializedVersion: 2
@@ -4640,9 +4619,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6ae02a222103184489e741b2430dca0b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResourceHUD
-  PooResourcesText: {fileID: 0}
-  TrashResourcesText: {fileID: 0}
-  ClanCoinsText: {fileID: 0}
+  PooCoinsText: {fileID: 0}
   GemsText: {fileID: 0}
 --- !u!1 &2126429556
 GameObject:
@@ -4832,6 +4809,7 @@ MonoBehaviour:
   AttackButton: {fileID: 230078536}
   ClaimButton: {fileID: 2126429558}
   SpotPooButton: {fileID: 0}
+  WatchAdButton: {fileID: 0}
   DeployPanel: {fileID: 0}
   SlideDuration: 0.25
 --- !u!114 &2134989318

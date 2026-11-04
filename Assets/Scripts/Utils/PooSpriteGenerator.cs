@@ -9,6 +9,9 @@ public static class PooSpriteGenerator
     static Sprite _cachedSprite;
     const int Size = 32;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() => _cachedSprite = null;
+
     public static Sprite GetPooSprite()
     {
         if (_cachedSprite != null) return _cachedSprite;
@@ -38,6 +41,17 @@ public static class PooSpriteGenerator
 
         // Highlight on top
         FillCircle(tex, 14, 24, 2, highlight);
+
+        // Spots — darker speckles scattered across the blob
+        var spot = new Color(0.3f, 0.16f, 0.06f);
+        FillCircle(tex, 12, 10, 2, spot);
+        FillCircle(tex, 20, 9,  2, spot);
+        FillCircle(tex, 18, 14, 1, spot);
+        FillCircle(tex, 11, 14, 1, spot);
+        FillCircle(tex, 15, 21, 1, spot);
+        FillCircle(tex, 19, 20, 1, spot);
+        FillCircle(tex, 13, 6,  1, spot);
+        FillCircle(tex, 19, 6,  1, spot);
 
         // Eyes (white with black pupils)
         FillCircle(tex, 13, 17, 2, Color.white);

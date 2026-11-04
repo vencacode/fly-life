@@ -179,11 +179,48 @@ public class PooManager : MonoBehaviour
 
     void SpawnMarker(PooInstance poo)
     {
-        if (PooMarkerPrefab == null) return;
+        // Auto-find MarkersParent in scene if not assigned
+        if (MarkersParent == null)
+            MarkersParent = GameObject.Find("PooMarkers")?.transform;
+
         var parent = MarkersParent ?? transform;
-        var go = GameObject.Instantiate(PooMarkerPrefab, (Vector3)poo.WorldPosition, Quaternion.identity, parent);
-        go.name = $"Poo_{poo.DistrictId}";
-        poo.MarkerObject = go;
+
+        if (PooMarkerPrefab != null)
+        {
+            var go = GameObject.Instantiate(PooMarkerPrefab, (Vector3)poo.WorldPosition, Quaternion.identity, parent);
+            go.name = $"Poo_{poo.DistrictId}";
+            poo.MarkerObject = go;
+            return;
+        }
+
+        // Fallback: create a simple runtime marker when no prefab assigned
+        var markerGo = new GameObject($"Poo_{poo.DistrictId}");
+        markerGo.transform.SetParent(parent, false);
+        markerGo.transform.position = (Vector3)poo.WorldPosition;
+        var marker = markerGo.AddComponent<PooMarker>();
+
+        // Sprite icon using procedural poo sprite
+        var iconGo = new GameObject("Icon");
+        iconGo.transform.SetParent(markerGo.transform, false);
+        iconGo.transform.localPosition = Vector3.zero;
+        var sr = iconGo.AddComponent<SpriteRenderer>();
+        sr.sprite = PooSpriteGenerator.GetPooSprite();
+        sr.sortingOrder = 5;
+        marker.Icon = sr;
+
+        var labelGo = new GameObject("Label");
+        labelGo.transform.SetParent(markerGo.transform, false);
+        labelGo.transform.localPosition = new Vector3(0, 0, -0.1f);
+        var tmp = labelGo.AddComponent<TMPro.TextMeshPro>();
+        tmp.text = "Poo";
+        tmp.fontSize = 3;
+        tmp.alignment = TMPro.TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        var rect = labelGo.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(5, 2);
+        marker.Label = tmp;
+
+        poo.MarkerObject = markerGo;
     }
 
     Vector2 RandomCityPosition()

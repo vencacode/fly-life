@@ -84,20 +84,28 @@ public class OfflineRewardPopup : MonoBehaviour
         collectRT.offsetMin = Vector2.zero; collectRT.offsetMax = Vector2.zero;
         collectBtn.GetComponent<Image>().color = new Color(0.2f, 0.55f, 0.2f);
 
-        // Watch ad for 2x button
-        int doubled = coinsEarned * 2;
-        var adBtn = CreateButton(_panel.transform, $"Watch Ad: +{doubled}", () =>
+        // Watch ad for 2x button — only shown when ads are enabled
+        if (FeatureFlags.ADS_ENABLED)
         {
-            AdManager.Instance?.ShowRewardedAd(() =>
+            int doubled = coinsEarned * 2;
+            var adBtn = CreateButton(_panel.transform, $"Watch Ad: +{doubled}", () =>
             {
-                ResourceManager.Instance?.AddPooCoins(doubled);
-                _panel.SetActive(false);
+                AdManager.Instance?.ShowRewardedAd(() =>
+                {
+                    ResourceManager.Instance?.AddPooCoins(doubled);
+                    _panel.SetActive(false);
+                });
             });
-        });
-        var adRT = adBtn.GetComponent<RectTransform>();
-        adRT.anchorMin = new Vector2(0.58f, 0.08f); adRT.anchorMax = new Vector2(0.85f, 0.25f);
-        adRT.offsetMin = Vector2.zero; adRT.offsetMax = Vector2.zero;
-        adBtn.GetComponent<Image>().color = new Color(0.5f, 0.4f, 0.1f);
+            var adRT = adBtn.GetComponent<RectTransform>();
+            adRT.anchorMin = new Vector2(0.58f, 0.08f); adRT.anchorMax = new Vector2(0.85f, 0.25f);
+            adRT.offsetMin = Vector2.zero; adRT.offsetMax = Vector2.zero;
+            adBtn.GetComponent<Image>().color = new Color(0.5f, 0.4f, 0.1f);
+        }
+        else
+        {
+            // Widen collect button when no ad button
+            collectRT.anchorMax = new Vector2(0.85f, 0.25f);
+        }
 
         _panel.SetActive(true);
     }

@@ -8,7 +8,7 @@ using UnityEngine;
 public class EnemyAIManager : MonoBehaviour
 {
     public static EnemyAIManager Instance { get; private set; }
-    public float AttackIntervalSeconds = 300f; // 5 minutes
+    public float AttackIntervalSeconds = Constants.ENEMY_ATTACK_INTERVAL;
 
     void Awake()
     {
@@ -44,6 +44,7 @@ public class EnemyAIManager : MonoBehaviour
                 Mathf.Abs(d.GridX - enemy.GridX) <= 1 &&
                 Mathf.Abs(d.GridY - enemy.GridY) <= 1 &&
                 d.Id != enemy.Id &&
+                d.Ring > 1 && // protect starter area (ring 0-1) from enemy takeover
                 (string.IsNullOrEmpty(d.OwnerId) || d.OwnerId == playerClanId)
             ).ToList();
 
@@ -51,7 +52,9 @@ public class EnemyAIManager : MonoBehaviour
             var target = adjacents[Random.Range(0, adjacents.Count)];
 
             // 30% chance enemy captures neutral, 15% against player
-            float chance = string.IsNullOrEmpty(target.OwnerId) ? 0.3f : 0.15f;
+            float chance = string.IsNullOrEmpty(target.OwnerId)
+                ? Constants.ENEMY_CHANCE_VS_NEUTRAL
+                : Constants.ENEMY_CHANCE_VS_PLAYER;
             if (Random.value < chance)
             {
                 bool wasPlayerOwned = target.OwnerId == playerClanId;

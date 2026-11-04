@@ -74,7 +74,7 @@ public class BattleManager : MonoBehaviour
     {
         int slots = Mathf.Max(Constants.BATTLE_SLOTS, enemyFlies.Count);
         // Use player-selected flies if available, otherwise fall back to auto-picking soldiers
-        var playerFlies = _pendingPlayerFlies ?? ClanManager.Instance.GetSoldiers(slots);
+        var playerFlies = _pendingPlayerFlies ?? ClanManager.Instance?.GetSoldiers(slots) ?? new();
         _pendingPlayerFlies = null;
 
         _playerSlots.Clear();
@@ -98,7 +98,7 @@ public class BattleManager : MonoBehaviour
             Round++;
             SetState(BattleState.RoundStart);
             UIEventBus.Emit(UIEvent.BattleRoundStart, Round);
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(Constants.BATTLE_ROUND_DELAY);
 
             // Resolve attacks slot by slot, sorted by speed
             var actions = BuildActionOrder();
@@ -107,7 +107,7 @@ public class BattleManager : MonoBehaviour
                 if (attacker == null || !attacker.IsAlive) continue;
                 if (target  == null || !target.IsAlive)   continue;
                 ResolveAttack(attacker, target);
-                yield return new WaitForSeconds(0.3f);
+                yield return new WaitForSeconds(Constants.BATTLE_ATTACK_DELAY);
             }
 
             // Item drop window
@@ -132,7 +132,7 @@ public class BattleManager : MonoBehaviour
                 yield break;
             }
 
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(Constants.BATTLE_ROUND_DELAY);
             SetState(BattleState.RoundStart);
         }
     }
@@ -141,17 +141,32 @@ public class BattleManager : MonoBehaviour
 
     List<(FlyInstance attacker, FlyInstance target)> BuildActionOrder()
     {
-        var pairs = new List<(FlyInstance, FlyInstance, int speed)>();
-        int slots = Mathf.Max(_playerSlots.Count, _enemySlots.Count);
-        for (int i = 0; i < slots; i++)
+        // Gather all living fighters
+        var livingPlayers = _playerSlots.Where(f => f != null && f.IsAlive).ToList();
+        var livingEnemies = _enemySlots.Where(f => f != null && f.IsAlive).ToList();
+
+        var pairs = new List<(FlyInstance attacker, FlyInstance target, int speed)>();
+
+        // Each living player targets a random living enemy
+        foreach (var p in livingPlayers)
         {
-            var p = i < _playerSlots.Count ? _playerSlots[i] : null;
-            var e = i < _enemySlots.Count  ? _enemySlots[i]  : null;
-            if (p != null && p.IsAlive) pairs.Add((p, e, p.Speed));
-            if (e != null && e.IsAlive) pairs.Add((e, p, e.Speed));
+            var target = livingEnemies.Count > 0
+                ? livingEnemies[Random.Range(0, livingEnemies.Count)]
+                : null;
+            pairs.Add((p, target, p.Speed));
         }
+
+        // Each living enemy targets a random living player
+        foreach (var e in livingEnemies)
+        {
+            var target = livingPlayers.Count > 0
+                ? livingPlayers[Random.Range(0, livingPlayers.Count)]
+                : null;
+            pairs.Add((e, target, e.Speed));
+        }
+
         return pairs.OrderByDescending(x => x.speed)
-                    .Select(x => (x.Item1, x.Item2))
+                    .Select(x => (x.attacker, x.target))
                     .ToList();
     }
 
@@ -168,7 +183,7 @@ public class BattleManager : MonoBehaviour
     void TrySpawnItemDrop()
     {
         if (PossibleDrops == null || PossibleDrops.Length == 0) return;
-        if (Random.value > 0.4f) return; // 40% chance per round
+        if (Random.value > Constants.GEAR_DROP_CHANCE) return;
 
         var drop = PossibleDrops[Random.Range(0, PossibleDrops.Length)];
         _pendingDrops.Add(drop);
@@ -230,10 +245,19 @@ public class BattleManager : MonoBehaviour
             var district = TerritoryManager.Instance?.GetDistrict(PendingDistrictId);
             bool isBoss = district?.IsBoss ?? false;
 
-            ResourceManager.Instance?.AddCoins(isBoss ? Random.Range(40, 80) : Random.Range(10, 30));
+            ResourceManager.Instance?.AddCoins(isBoss
+                ? Random.Range(Constants.BOSS_WIN_COINS_MIN, Constants.BOSS_WIN_COINS_MAX)
+                : Random.Range(Constants.BATTLE_WIN_COINS_MIN, Constants.BATTLE_WIN_COINS_MAX));
+
+            // Gem reward for boss kills
+            if (isBoss)
+            {
+                ResourceManager.Instance?.AddGems(Constants.GEMS_BOSS_KILL);
+                ToastManager.Instance?.ShowToast($"+{Constants.GEMS_BOSS_KILL} Gems (Boss defeated!)", ToastType.Reward);
+            }
 
             // Boss: guaranteed gear drop. Normal: 40% chance
-            float dropChance = isBoss ? 1f : 0.4f;
+            float dropChance = isBoss ? Constants.BOSS_GEAR_DROP_CHANCE : Constants.GEAR_DROP_CHANCE;
             if (Random.value < dropChance)
             {
                 var droppable = EquipmentRegistry.GetDroppableItems();

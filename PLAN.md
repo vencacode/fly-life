@@ -40,7 +40,7 @@ Player starts at center, expands outward.
 | Currency | Earned by | Spent on |
 |---|---|---|
 | Poo Coins | Owning districts, winning battles | Gear upgrades, fly training |
-| Gems (premium) | Rewarded ads, future IAP | Boosters, cosmetics |
+| Gems | Daily login, achievements, boss kills | Boosters, cosmetics, skins |
 
 *TrashResources removed from v1 (too complex for casual players).*
 
@@ -58,11 +58,17 @@ Fly roles in battle:
 - **Soldier**: highest attack/defense stats
 - **Worker**: heals allies between rounds
 
-## Monetization (v1)
+## Monetization
 
-- **Rewarded ads**: double XP from next battle, or instant poo coin pack
-- No pay-to-win in v1
-- Future v2: cosmetic fly skins, extra map districts (IAP)
+**Deferred to post-playtest.** First playable build ships with no ads and no IAP.
+- Gems earned from gameplay only (daily login, achievements, boss kills)
+- All Gem-gated content remains functional, just no way to buy Gems yet
+- AdMob and Unity IAP stubs exist in code, disabled at runtime via feature flags
+
+*When ready to monetize:*
+- Rewarded ads: double XP from next battle, or instant poo coin pack
+- IAP: Gem packs (small/medium/large)
+- No pay-to-win
 
 ## What's Cut from v1
 
@@ -116,7 +122,7 @@ Goal: shippable Android build.
 24. Sound effects (battle hits, level up, district capture)
 25. Android build configuration + Google Play submission
 
-### Phase 6 — Game Feel & Onboarding *(current)*
+### Phase 6 — Game Feel & Onboarding ✅
 Goal: new players understand the game in 60 seconds, sessions feel tight.
 
 26. Tutorial flow (guided first battle at center district)
@@ -129,14 +135,52 @@ Goal: new players understand the game in 60 seconds, sessions feel tight.
 33. Map zoom & pan (pinch-zoom, drag to scroll on larger maps)
 34. Push notifications (district under attack, daily login reminder)
 
-### Phase 7 — v2 Content & IAP
-Goal: second content drop, first in-app purchases.
+### Phase 7 — v2 Content ✅
+Goal: second content drop.
 
 35. Cosmetic fly skins (3 skins per role, purchasable with Gems)
-36. IAP: Gem packs (small/medium/large via Google Play Billing)
+36. ~~IAP: Gem packs~~ → deferred, Gems from gameplay only for now
 37. Expanded map: 7×7 grid (49 districts, Ring 3 = level 7-9)
 38. New gear tier: Legendary items (boss-only drops, unique abilities)
 39. Fly promotion system (max-level flies evolve to elite variant)
 40. Seasonal events (limited-time districts with unique rewards)
-41. Leaderboard (total districts owned, synced via Play Games Services)
-42. Analytics integration (Firebase — session length, battle win rate, IAP conversion)
+41. Leaderboard (total districts owned — local only until Play Games wired)
+42. Analytics integration (stub — real Firebase deferred)
+
+### Phase 8 — Meta-Progression & Engagement ✅
+Goal: long-term retention loops.
+
+43. Achievement system
+44. Daily missions
+45. Fly breeding/fusion
+46. Offline progress
+47. Collection codex
+48. Boss rush mode
+49. Stat respec
+50. Rate app prompt
+
+### Phase 9 — First Playable *(current)*
+Goal: a real person can install the APK, play for 30 minutes, and have fun. No crashes, no placeholder text, no broken flows.
+
+51. Disable ads & IAP at runtime (feature flags, hide "Watch Ad" buttons, Gems from gameplay only)
+52. Gem economy rebalance (add Gem rewards to: boss kills, achievements, daily missions)
+53. Stub removal audit (find all reflection-based stubs, replace with graceful no-ops or real logic)
+54. Scene flow audit (every scene transition works, no dead ends, back buttons all function)
+55. Save system stress test (corrupt save recovery, fresh install flow, upgrade path)
+56. UI/UX pass (no overlapping text, all buttons reachable, touch targets ≥ 48dp, safe areas)
+57. Balance tuning pass (difficulty curve, economy rates, battle pacing — all in one Constants sweep)
+58. Placeholder art audit (find all [POO], grey squares, missing sprites — list for replacement)
+59. Error handling (null checks on all manager singletons, graceful fallbacks, no silent failures)
+60. Android device testing (build signed APK, test on 2+ real devices, fix crashes)
+
+### Phase 10 — Art, Audio & Store (future)
+Goal: production-quality assets, store submission.
+
+61. Commission/create real sprite art (flies, poos, tiles, UI)
+62. Music tracks (menu loop, battle loop, victory jingle)
+63. Real SFX files (replace placeholder clips)
+64. App icon + store assets (feature graphic, screenshots)
+65. Google Play Console listing + closed testing
+66. AdMob + Unity IAP real SDK integration (when ready to monetize)
+67. Firebase Analytics real integration
+68. Privacy policy + age rating

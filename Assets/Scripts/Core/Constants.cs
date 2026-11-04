@@ -26,9 +26,27 @@ public static class Constants
 
     // --- Battle ---
     public const int    BATTLE_SLOTS            = 5;
+    public const int    BOSS_BATTLE_SLOTS       = 7;
+    public const float  BATTLE_ROUND_DELAY      = 0.5f;    // seconds between rounds
+    public const float  BATTLE_ATTACK_DELAY     = 0.3f;    // seconds between attacks in a round
     public const float  ITEM_DROP_WINDOW_SEC    = 3f;      // seconds to tap a dropped item
     public const int    XP_PER_BATTLE_WIN       = 50;
     public const int    XP_PER_BATTLE_LOSS      = 10;
+    public const int    XP_PER_LEVEL            = 100;     // XP needed per fly level
+    public const int    CLAN_XP_PER_LEVEL       = 100;     // XP needed per clan level
+    public const float  GEAR_DROP_CHANCE        = 0.4f;    // 40% chance per battle win
+    public const float  BOSS_GEAR_DROP_CHANCE   = 1.0f;    // guaranteed drop from boss
+
+    // --- Battle rewards ---
+    public const int    BATTLE_WIN_COINS_MIN    = 10;
+    public const int    BATTLE_WIN_COINS_MAX    = 30;
+    public const int    BOSS_WIN_COINS_MIN      = 40;
+    public const int    BOSS_WIN_COINS_MAX      = 80;
+
+    // --- Leveling ---
+    public const float  STAT_ATTACK_GROWTH      = 1.1f;    // attack multiplier per level
+    public const float  STAT_DEFENSE_GROWTH     = 1.1f;    // defense multiplier per level
+    public const float  STAT_HEALTH_GROWTH      = 1.15f;   // health multiplier per level
 
     // --- Training & Upgrades ---
     public const int    TRAINING_COST           = 50;      // PooCoins to train a fly
@@ -39,6 +57,12 @@ public static class Constants
     public const int    STARTING_GEMS           = 50;
     public const int    STARTING_CLAN_COINS     = 100;
     public const int    AD_BOOSTER_COOLDOWN_SEC = 600;     // 10 min between rewarded ads per booster
+
+    // --- Gem income (no IAP) ---
+    public const int    GEMS_DAILY_LOGIN      = 5;
+    public const int    GEMS_BOSS_KILL        = 10;
+    public const int    GEMS_FIRST_DISTRICT   = 15;   // one-time tutorial reward
+    public const int    GEMS_FULL_MAP_CLEAR   = 50;   // one-time reward for owning all districts
 
     // --- Booster costs ---
     public const int    BOOSTER_POO_RADAR_GEMS  = 50;
@@ -63,6 +87,18 @@ public static class Constants
     // --- Stat Respec ---
     public const int RESPEC_COST = 150;  // PooCoins
 
+    // --- Difficulty ---
+    public const int RING0_DIFFICULTY = 1;
+    public const int RING1_DIFFICULTY = 1;  // inner ring: attackable from start
+    public const int RING2_DIFFICULTY = 2;
+    public const int RING3_DIFFICULTY = 3;
+    public const int BOSS_DIFFICULTY  = 5;
+
+    // --- Enemy AI ---
+    public const float ENEMY_ATTACK_INTERVAL     = 300f;  // 5 min between attacks
+    public const float ENEMY_CHANCE_VS_NEUTRAL   = 0.3f;
+    public const float ENEMY_CHANCE_VS_PLAYER    = 0.15f;
+
     // --- IAP Product IDs ---
     public const string IAP_GEMS_100  = "com.flylife.gems100";
     public const string IAP_GEMS_500  = "com.flylife.gems500";
@@ -70,6 +106,7 @@ public static class Constants
     public const string IAP_GEMS_3000 = "com.flylife.gems3000";
 
     // --- Scene names ---
+    public const string SCENE_BOOTSTRAP        = "Bootstrap";
     public const string SCENE_MENU             = "MainMenu";
     public const string SCENE_CITY             = "MainMap";
     public const string SCENE_BATTLE           = "Battle";

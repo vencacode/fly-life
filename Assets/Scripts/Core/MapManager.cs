@@ -132,9 +132,17 @@ public class MapManager : MonoBehaviour
         }
         tile.SetSelected(true);
 
-        if (TerritoryManager.Instance.Districts.TryGetValue(districtId, out var d))
+        if (TerritoryManager.Instance != null &&
+            TerritoryManager.Instance.Districts.TryGetValue(districtId, out var d))
             InfoPanel?.Show(d);
     }
 
     void OnResourceChanged(string type, int newVal) => RefreshAllTiles();
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        if (DistrictTilePrefab == null) Debug.LogWarning("[MapManager] DistrictTilePrefab not assigned!", this);
+    }
+#endif
 }

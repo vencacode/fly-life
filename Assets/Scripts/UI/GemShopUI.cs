@@ -42,6 +42,11 @@ public class GemShopUI : MonoBehaviour
 
     public void Show()
     {
+        if (!FeatureFlags.IAP_ENABLED)
+        {
+            ToastManager.Instance?.ShowToast("Gem shop not available yet.", ToastType.Warning);
+            return;
+        }
         _panel.SetActive(true);
         RebuildContent();
     }
